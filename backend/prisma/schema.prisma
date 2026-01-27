@@ -1,0 +1,526 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id               String             @id @default(uuid())
+  name             String
+  address          String?            @unique
+  imageLogo        String?
+  nif              String?
+  created_at       DateTime?          @default(now())
+  updated_at       DateTime?          @default(now())
+  users            User[]
+  categories       Category[]
+  products         Product[]
+  orders           Order[]
+  Stock            Stock[]
+  StockHistory     StockHistory[]
+  Item             Item[]
+  purchases        Purchase[]
+  activeLicense    Boolean            @default(true)
+  margin_stock     Int?
+  margin_dish      Int?
+  Supplier         Supplier[]
+  mesas            Mesa[]
+  reservas         Reserva[]
+  SalePriceHistory SalePriceHistory[]
+  PurchaseProduct  PurchaseProduct[]
+  ProductType      ProductType[]
+  Recipe           Recipe[]
+  Session          Session[]
+  OrderSession     OrderSession[]
+  Lote             Lote[]
+  areas            Area[]
+  economatoes      Economato[]
+  pedidoAreas      PedidoArea[]
+  itemPedidoAreas  ItemPedidoArea[]
+  consumoInternos  ConsumoInterno[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String       @id @default(uuid())
+  name           String
+  user_name      String
+  telefone       String       @unique
+  email          String
+  role           String
+  password       String
+  created_at     DateTime?    @default(now())
+  updated_at     DateTime?    @default(now())
+  Organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+
+  @@map("users")
+}
+
+model Category {
+  id             String        @id @default(uuid())
+  name           String
+  created_at     DateTime?     @default(now())
+  updated_at     DateTime?     @default(now())
+  products       Product[]
+  Organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+
+  @@map("categories")
+}
+
+model Product {
+  id               String             @id @default(uuid())
+  name             String
+  description      String
+  banner           String
+  unit             String
+  is_fractional    Boolean            @default(false)
+  created_at       DateTime?          @default(now())
+  updated_at       DateTime?          @default(now())
+  Category         Category           @relation(fields: [categoryId], references: [id])
+  categoryId       String
+  items            Item[]
+  Organization     Organization?      @relation(fields: [organizationId], references: [id])
+  organizationId   String?
+  isDerived        Boolean            @default(false)
+  isIgredient      Boolean            @default(false)
+  Stock            Stock[]
+  recipeItems      Recipe[]           @relation("ProductRecipe") // se for prato
+  usedIn           Recipe[]           @relation("IngredientRecipe") // se for insumo
+  StockHistory     StockHistory[]
+  purchaseProducts PurchaseProduct[]
+  SalePriceHistory SalePriceHistory[]
+  PrecoVenda       PrecoVenda[]
+  Lote             Lote[]
+  economatoes      Economato[]
+  itemPedidoAreas  ItemPedidoArea[]
+  consumoInternos  ConsumoInterno[]
+
+  @@map("products")
+}
+
+//Modelo_receita
+model Recipe {
+  id             String        @id @default(uuid())
+  productId      String // prato
+  ingredientId   String // insumo
+  quantity       Float // quanto g/ml/etc do insumo é usado no prato
+  impactaPreco   Boolean       @default(false)
+  product        Product       @relation("ProductRecipe", fields: [productId], references: [id])
+  ingredient     Product       @relation("IngredientRecipe", fields: [ingredientId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+}
+
+model Area {
+  id              String           @id @default(uuid())
+  nome            String // "Cozinha", "Bar", "Sala", "Armazém", etc.
+  descricao       String?
+  organization    Organization?    @relation(fields: [organizationId], references: [id])
+  organizationId  String?
+  economato       Economato[]
+  consumoInternos ConsumoInterno[]
+  pedidosOrigem   PedidoArea[]     @relation("PedidosOrigem")
+  pedidosDestino  PedidoArea[]     @relation("PedidosDestino")
+
+  @@unique([nome, organizationId])
+  @@map("areas")
+}
+
+model Economato {
+  id             String       @id @default(uuid())
+  areaId         String
+  area           Area         @relation(fields: [areaId], references: [id])
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  quantity       Float // Quantidade disponível na área
+  minQuantity    Float? // Quantidade mínima para alerta
+  maxQuantity    Float? // Quantidade máxima recomendada
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([areaId, productId, organizationId])
+  @@map("economato")
+}
+
+// Modelo para registrar pedidos entre áreas
+model PedidoArea {
+  id               String           @id @default(uuid())
+  areaOrigemId     String? // Área que está solicitando (Opcional, null = Stock Geral)
+  areaOrigem       Area?            @relation("PedidosOrigem", fields: [areaOrigemId], references: [id])
+  areaDestinoId    String // Área que possui o produto (geralmente Armazém)
+  areaDestino      Area             @relation("PedidosDestino", fields: [areaDestinoId], references: [id])
+  status           StatusPedidoArea @default(pendente)
+  observacoes      String?
+  criadoEm         DateTime         @default(now())
+  processadoEm     DateTime?
+  processadoPor    String? // ID do usuário que processou
+  confirmationCode String? // Código de 6 dígitos para confirmar recebimento
+  organizationId   String
+  organization     Organization     @relation(fields: [organizationId], references: [id])
+  itens            ItemPedidoArea[]
+  historico        PedidoHistory[]
+
+  @@map("pedidos_area")
+}
+
+model PedidoHistory {
+  id             String     @id @default(uuid())
+  pedidoId       String
+  pedido         PedidoArea @relation(fields: [pedidoId], references: [id])
+  statusAnterior String?
+  novoStatus     String
+  alteradoPor    String? // ID do user
+  data           DateTime   @default(now())
+  observacoes    String?
+  organizationId String
+
+  @@map("pedido_history")
+}
+
+// Modelo para os itens dos pedidos entre áreas
+model ItemPedidoArea {
+  id             String       @id @default(uuid())
+  pedidoId       String
+  pedido         PedidoArea   @relation(fields: [pedidoId], references: [id])
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  quantity       Float // Quantidade solicitada
+  quantitySent   Float? // Quantidade realmente enviada
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("itens_pedido_area")
+}
+
+// Modelo para registrar consumo interno das áreas
+model ConsumoInterno {
+  id             String       @id @default(uuid())
+  areaId         String
+  area           Area         @relation(fields: [areaId], references: [id])
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  quantity       Float // Quantidade consumida
+  motivo         String? // "Preparação", "Perda", "Degustação", etc.
+  observacoes    String?
+  criadoEm       DateTime     @default(now())
+  criadoPor      String? // ID do usuário que registrou
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  loteId         String? // Lote específico consumido (se aplicável)
+  lote           Lote?        @relation(fields: [loteId], references: [id])
+
+  @@map("consumo_interno")
+}
+
+// Enums para status
+enum StatusPedidoArea {
+  pendente
+  aprovado
+  rejeitado
+  processado
+  cancelado
+}
+
+model Lote {
+  id              String           @id @default(uuid())
+  productId       String
+  product         Product          @relation(fields: [productId], references: [id])
+  quantity        Int
+  preco_compra    Float // Preço unitário de compra deste lote
+  preco_venda     Float? // Preço de venda específico (opcional)
+  data_compra     DateTime         @default(now())
+  data_validade   DateTime? // Para produtos perecíveis
+  purchaseId      String? // Relaciona à compra de origem
+  purchase        Purchase?        @relation(fields: [purchaseId], references: [id])
+  organizationId  String
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  StockHistory    StockHistory[]
+  isActive        Boolean          @default(true) // Para controle de lotes esgotados
+  consumoInternos ConsumoInterno[]
+
+  @@index([productId, organizationId])
+  @@map("lotes")
+}
+
+model Stock {
+  id             String       @id @default(uuid())
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  totalQuantity  Int // Quantidade total (soma de todos os lotes ativos)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("stock")
+}
+
+model Reserva {
+  id                String        @id @default(uuid())
+  mesaId            String
+  mesa              Mesa          @relation(fields: [mesaId], references: [id])
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id])
+  clienteNome       String
+  clienteTelefone   String?
+  clienteEmail      String?
+  dataReserva       DateTime // Data e hora da reserva
+  quantidadePessoas Int
+  status            ReservaStatus @default(confirmada)
+  observacoes       String?
+  criadaEm          DateTime      @default(now())
+  atualizadaEm      DateTime      @updatedAt
+
+  @@map("reservas")
+}
+
+model Mesa {
+  id             String       @id @default(uuid())
+  number         Int
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  capacidade     Int          @default(4) // Quantidade de pessoas
+  status         MesaStatus   @default(livre)
+  qrCodeUrl      String? // URL do QR Code gerado
+  reservas       Reserva[]
+  sessions       Session[]
+
+  @@unique([number, organizationId])
+  @@map("mesas")
+}
+
+enum MesaStatus {
+  livre
+  ocupada
+  reservada
+  manutencao
+}
+
+enum ReservaStatus {
+  pendente
+  confirmada
+  cancelada
+  concluida
+  nao_compareceu
+}
+
+model OrderSession {
+  id             String       @id @default(uuid())
+  sessionId      String
+  Session        Session      @relation(fields: [sessionId], references: [id])
+  Order          Order        @relation(fields: [orderId], references: [id])
+  orderId        String
+  Organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+
+  @@map("order_sessions")
+}
+
+model Session {
+  id             String         @id @default(uuid())
+  codigoAbertura String         @unique
+  mesa           Mesa           @relation(fields: [mesaId], references: [id])
+  mesaId         String
+  abertaEm       DateTime       @default(now())
+  fechadaEm      DateTime?
+  status         Boolean        @default(true) // true para sessão ativa, false para finalizada
+  Organization   Organization   @relation(fields: [organizationId], references: [id])
+  organizationId String
+  clientToken    String?
+  Order          Order[]
+  OrderSession   OrderSession[]
+  Fatura         Fatura?
+
+  @@map("sessions")
+}
+
+model Order {
+  id             String         @id @default(uuid())
+  sessionId      String?
+  status         Boolean        @default(false)
+  draft          Boolean        @default(true)
+  name           String?
+  created_at     DateTime?      @default(now())
+  updated_at     DateTime?      @default(now())
+  items          Item[]
+  Session        Session?       @relation(fields: [sessionId], references: [id])
+  OrderSession   OrderSession[]
+  Organization   Organization?  @relation(fields: [organizationId], references: [id])
+  organizationId String?
+
+  @@map("orders")
+}
+
+model Item {
+  id             String       @id @default(uuid())
+  amount         Int
+  created_at     DateTime?    @default(now())
+  updated_at     DateTime?    @default(now())
+  prepared       Boolean      @default(false)
+  Order          Order        @relation(fields: [orderId], references: [id])
+  orderId        String
+  Product        Product      @relation(fields: [productId], references: [id])
+  productId      String
+  Organization   Organization @relation(fields: [organizationId], references: [id])
+  organizationId String
+
+  @@map("items")
+}
+
+model Fatura {
+  id              String           @id @default(uuid())
+  sessionId       String           @unique
+  session         Session          @relation(fields: [sessionId], references: [id])
+  valorTotal      Float
+  status          FaturaStatus     @default(pendente)
+  metodoPagamento MetodoPagamento? // Use o enum atualizado
+  criadaEm        DateTime         @default(now())
+  pagaEm          DateTime?
+  trocoPara       Float? // Para pagamentos em dinheiro
+  valorPago       Float? // Valor efetivamente pago (para troco)
+  observacoes     String? // Observações sobre o pagamento
+  pagamentos      Pagamento[]
+
+  @@map("faturas")
+}
+
+// Novo modelo para pagamentos múltiplos
+model Pagamento {
+  id            String          @id @default(uuid())
+  faturaId      String
+  fatura        Fatura          @relation(fields: [faturaId], references: [id])
+  metodo        MetodoPagamento
+  valor         Float
+  dataPagamento DateTime        @default(now())
+  referencia    String? // Número do cartão, referência de transferência, etc.
+  observacoes   String?
+
+  @@map("pagamentos")
+}
+
+enum FaturaStatus {
+  pendente
+  paga
+  cancelada
+}
+
+// Adicione este enum
+enum MetodoPagamento {
+  dinheiro
+  multicaixa
+  cartao
+  transferencia
+}
+
+model StockHistory {
+  id             String              @id @default(uuid())
+  type           String // "entrada" or "saída" to indicate the type of transaction
+  price          Float
+  quantity       Int
+  created_at     DateTime            @default(now())
+  productId      String
+  product        Product             @relation(fields: [productId], references: [id])
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  referenceId    String?
+  referenceType  StockReferenceType?
+  Lote           Lote?               @relation(fields: [loteId], references: [id])
+  loteId         String?
+
+  @@map("stock_history")
+}
+
+//modelo_fornecedor
+model Supplier {
+  id             String        @id @default(uuid())
+  name           String
+  contact        String?
+  endereco       String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+  Purchase       Purchase[]
+}
+
+// model de compras
+model Purchase {
+  id               String             @id @default(uuid())
+  name             String?
+  description      String?
+  created_at       DateTime           @default(now())
+  products         PurchaseProduct[]
+  qtdCompra        Int
+  status           Boolean            @default(false)
+  organization     Organization?      @relation(fields: [organizationId], references: [id])
+  organizationId   String?
+  supplier         Supplier?          @relation(fields: [SupplierId], references: [id])
+  SupplierId       String?
+  SalePriceHistory SalePriceHistory[]
+  Lote             Lote[]
+
+  @@map("purchases")
+}
+
+model ProductType {
+  id              String            @id @default(uuid())
+  tipe            String
+  PurchaseProduct PurchaseProduct[]
+  organization    Organization?     @relation(fields: [organizationId], references: [id])
+  organizationId  String?
+}
+
+// models de compra_produtos
+model PurchaseProduct {
+  id             String        @id @default(uuid())
+  quantity       Int
+  purchasePrice  Float?
+  created_at     DateTime      @default(now())
+  Purchase       Purchase      @relation(fields: [purchaseId], references: [id])
+  purchaseId     String
+  product        Product       @relation(fields: [productId], references: [id])
+  productId      String
+  productType    ProductType?  @relation(fields: [productTypeId], references: [id])
+  productTypeId  String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+
+  @@map("purchase_products")
+}
+
+model SalePriceHistory {
+  id             String        @id @default(uuid())
+  created_at     DateTime      @default(now())
+  newPrice       Float
+  oldPrice       Float
+  purchase       Purchase      @relation(fields: [purchaseId], references: [id])
+  purchaseId     String
+  product        Product       @relation(fields: [productId], references: [id])
+  productId      String
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  organizationId String?
+
+  @@map("sale_price_history")
+}
+
+model PrecoVenda {
+  id               String    @id @default(uuid())
+  product          Product   @relation(fields: [productId], references: [id])
+  productId        String
+  preco_venda      Float
+  data_inicio      DateTime? @default(now())
+  data_fim         DateTime?
+  precoSugerido    Float?
+  precisaAtualizar Boolean   @default(false)
+}
+
+enum StockReferenceType {
+  purchase
+  sale
+  manual
+  transferencia_area
+  consumo_interno
+  ajuste
+}
