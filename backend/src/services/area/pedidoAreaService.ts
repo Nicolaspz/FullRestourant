@@ -35,12 +35,12 @@ class CriarPedidoAreaService {
       }
       
       // Verificar área de origem se fornecida
-      if (areaOrigemId) {
+     /*if (areaOrigemId) {
         const areaOrigem = await tx.area.findFirst({
            where: { id: areaOrigemId, organizationId },
         });
         if (!areaOrigem) throw new Error("Área de origem não encontrada");
-      }
+      }*/
 
       // Criar pedido
       const pedido = await tx.pedidoArea.create({
@@ -177,11 +177,6 @@ class ProcessarPedidoAreaService {
           id: pedidoId,
           organizationId,
         },
-        include: {
-          itens: true,
-          areaOrigem: true,
-          areaDestino: true,
-        },
       });
 
       if (!pedido) {
@@ -192,81 +187,41 @@ class ProcessarPedidoAreaService {
         throw new Error("Pedido já foi processado");
       }
 
-      // Se aprovado, processar transferência
-      if (status === "aprovado" || status === "processado") {
-        for (const item of pedido.itens) {
-          // Verificar stock na área de destino (que tem o produto)
-          const stockDestino = await tx.economato.findFirst({
-            where: {
-              areaId: pedido.areaDestinoId,
-              productId: item.productId,
-              organizationId,
-            },
-          });
+      // Criar histórico
+      await tx.pedidoHistory.create({
+        data: {
+          pedidoId: pedido.id,
+          statusAnterior: pedido.status,
+          novoStatus: status,
+          alteradoPor: usuarioId,
+          data: new Date(),
+          observacoes: observacoes || `Pedido ${status}`,
+          organizationId,
+        },
+      });
 
-          if (!stockDestino || stockDestino.quantity < item.quantity) {
-            throw new Error(`Stock insuficiente para ${item.productId}`);
-          }
-
-          // Transferir do destino para origem
-          await tx.economato.update({
-            where: { id: stockDestino.id },
-            data: { quantity: { decrement: item.quantity } },
-          });
-
-          // Adicionar à área de origem
-          await tx.economato.upsert({
-            where: {
-              areaId_productId_organizationId: {
-                areaId: pedido.areaOrigemId,
-                productId: item.productId,
-                organizationId,
-              },
-            },
-            update: {
-              quantity: { increment: item.quantity },
-            },
-            create: {
-              areaId: pedido.areaOrigemId,
-              productId: item.productId,
-              quantity: item.quantity,
-              organizationId,
-            },
-          });
-
-          // Registrar no histórico
-          await tx.stockHistory.create({
-            data: {
-              type: "saída",
-              price: 0,
-              quantity: item.quantity,
-              created_at: new Date(),
-              productId: item.productId,
-              organizationId,
-              referenceType: "transferencia_area",
-            },
-          });
-
-          // Atualizar quantidade enviada
-          await tx.itemPedidoArea.update({
-            where: { id: item.id },
-            data: { quantitySent: item.quantity },
-          });
-        }
+      let confirmationCode = null;
+      
+      // Se aprovado, gerar código de confirmação
+      if (status === "aprovado") {
+        confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
       }
 
-      // Atualizar status do pedido
+      // Atualizar pedido
       const pedidoAtualizado = await tx.pedidoArea.update({
         where: { id: pedidoId },
         data: {
           status,
-          processadoEm: new Date(),
           processadoPor: usuarioId,
           observacoes,
+          confirmationCode,
         },
       });
 
-      return pedidoAtualizado;
+      return {
+        ...pedidoAtualizado,
+        confirmationCode, // Retornar código se foi gerado
+      };
     });
   }
 }

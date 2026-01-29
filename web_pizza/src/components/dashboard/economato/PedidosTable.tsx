@@ -199,8 +199,9 @@ export function PedidosTable() {
     }
   };
 
-  const handleProcessPedido = async () => {
-    if (!user?.organizationId || !user?.id || !selectedPedido || !processStatus) return;
+  const handleProcessPedido = async () => { 
+ 
+   if (!user?.organizationId || !user?.id || !selectedPedido || !processStatus) return;
 
     try {
       setIsSubmitting(true);
@@ -236,13 +237,14 @@ export function PedidosTable() {
 
     try {
 
-       const response = await api.post(`/pedidos-area/${selectedPedido.id}/confirmar`, 
+     await economatoService.confirmPedido(selectedPedido.id,confirmCode,user.organizationId,user.id)
+       /*const response = await api.post(`/pedidos-area/${selectedPedido.id}/confirmar`, 
         { confirmCode },
         {
           params: {organizationId: user?.organizationId},
           headers: { Authorization: `Bearer ${user?.token}` },
         }
-      );
+      );*/
       
       toast.success("Recebimento confirmado! Stock atualizado.");
       setIsConfirmSheetOpen(false);
@@ -339,7 +341,7 @@ export function PedidosTable() {
                     <TableCell>{new Date(pedido.criadoEm).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <span className="font-medium text-gray-700">
-                          {pedido.areaOrigem?.nome || "Stock Geral"}
+                          Stock Geral
                       </span>
                       <span className="mx-2 text-muted-foreground">➔</span>
                       <span className="font-medium text-green-700">{pedido.areaDestino.nome}</span>

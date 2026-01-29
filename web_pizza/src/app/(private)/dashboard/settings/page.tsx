@@ -10,6 +10,7 @@ import { SettingsTabs } from "@/components/settings/SettingsTabs"
 import Sidebar from "@/components/layouts/admin/Sidebar"
 import Head from 'next/head'
 import { Organization } from '@/types/product' 
+import AreasPage from '../economato/areas/page'
 
 interface User {
   id: string
@@ -67,6 +68,7 @@ export default function SettingsPage() {
     },
     { id: "account", label: "Conta", icon: "user", content: <AccountSection /> },
     { id: "security", label: "Segurança", icon: "lock", content: <SecuritySection /> },
+    { id: "area", label: "Area de Trabalho", icon: "lock", content: <AreasPage />},
     
   ]
 

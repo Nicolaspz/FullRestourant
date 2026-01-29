@@ -9,65 +9,58 @@ import {
   ArrowRightLeft, 
   ClipboardList 
 } from "lucide-react";
+import { useContext, useState } from "react";
+import { AuthContext } from "@/contexts/AuthContext";
+import { Organization } from "@/types/product";
+import StockPage from "./stock/page";
+import PedidosPage from "./pedidos/page";
+import ConsumoPage from "./consumo/page";
+import AreasPage from "./areas/page";
+import { SettingsHeader } from "@/components/settings/SettingsHeader";
+import { SettingsTabs } from "@/components/settings/SettingsTabs";
+
 
 export default function EconomatoLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
+  
+  const { user } = useContext(AuthContext)
+    const [organization, setOrganization] = useState<Organization | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
 
   const tabs = [
-    { 
-      label: "Stock / Inventário", 
-      href: "/dashboard/economato/stock",
-      icon: Warehouse
+         { 
+      id: "Stock", 
+      label: "Stock/Inventário", 
+      icon: "warehouse", // ← string, não componente
+      content: <StockPage /> 
     },
     { 
-      label: "Áreas", 
-      href: "/dashboard/economato/areas",
-      icon: Map
+      id: "Pedidos", 
+      label: "Pedidos", 
+      icon: "arrow-right-left", // ← string
+      content: <PedidosPage /> 
     },
+    
     { 
-      label: "Pedidos / Transferências", 
-      href: "/dashboard/economato/pedidos",
-      icon: ArrowRightLeft
+      id: "Consumos", 
+      label: "Consumos Internos", 
+      icon: "clipboard-list", // ← string
+      content: <ConsumoPage /> 
     },
-    { 
-      label: "Consumo Interno", 
-      href: "/dashboard/economato/consumo",
-      icon: ClipboardList
-    },
+  
   ];
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="border-b bg-background px-6 py-2">
-        <nav className="flex items-center space-x-6 overflow-x-auto">
-          {tabs.map((tab) => {
-            const isActive = pathname === tab.href;
-            const Icon = tab.icon;
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className={cn(
-                  "flex items-center gap-2 py-3 text-sm font-medium transition-colors border-b-2 hover:text-primary whitespace-nowrap",
-                  isActive 
-                    ? "border-primary text-primary" 
-                    : "border-transparent text-muted-foreground"
-                )}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-      <div className="flex-1 overflow-auto">
-        {children}
-      </div>
-    </div>
+    <div className="flex-1 space-y-6 p-6">
+              <SettingsHeader 
+                title="Configurações do Stock "
+                description="Gerencie Os stock, fazendo Pedidos e Consumos"
+              />
+              
+              <SettingsTabs tabs={tabs} defaultTab="Stock" />
+            </div>
   );
 }

@@ -38,12 +38,7 @@ const menuItems = [
     href: "/dashboard",
     roles: ['Super Admin', 'Admin', 'Garçon', 'Caixa'] as UserRole[]
   },
-  { 
-    icon: Table2, 
-    label: "Menú", 
-    href: "/dashboard/cardapio",
-    roles: ['Super Admin', 'Admin', 'Caixa'] as UserRole[]
-  },
+ 
   { 
     icon: Users, 
     label: "Usuários", 

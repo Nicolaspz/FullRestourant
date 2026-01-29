@@ -22,7 +22,7 @@ class CriarPedidoAreaController {
       }
 
       // Validações
-      if (!areaOrigemId?.trim() || !areaDestinoId?.trim()) {
+      if (!areaDestinoId?.trim()) {
         return res.status(400).json({
           success: false,
           error: "Áreas de origem e destino são obrigatórias"

@@ -19,6 +19,7 @@ export type EconomatoItem = {
   minQuantity?: number;
   maxQuantity?: number;
   product: {
+    id:string
     name: string;
     unit: string;
     isIgredient: boolean;
@@ -193,7 +194,7 @@ export const economatoService = {
       );
       return response.data;
     } catch (error: any) {
-      console.error('Erro detalhado:', error.response?.data || error.message);
+      console.error('Erro detalhado1:', error.response?.data || error.message);
       throw error;
     }
   },

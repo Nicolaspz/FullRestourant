@@ -28,7 +28,8 @@ class ConfirmarPedidoService {
               product: true,
             },
           },
-          areaDestino: true,
+          areaOrigem: true, // Área que solicitou (pode ser null se vier do stock geral)
+          areaDestino: true, // Área que vai receber
         },
       });
 
@@ -44,10 +45,10 @@ class ConfirmarPedidoService {
         throw new Error("Código de confirmação inválido");
       }
 
-      // Processar cada item
+      // Processar cada item - SEMPRE do STOCK para ECONOMATO da ÁREA
       for (const item of pedido.itens) {
-        const quantidade = Math.ceil(item.quantity);
-
+        const quantidade = item.quantity; // Float
+        
         // 1. Buscar stock geral
         const stockGeral = await tx.stock.findFirst({
           where: {
@@ -60,11 +61,13 @@ class ConfirmarPedidoService {
           throw new Error(`Produto ${item.product.name} não possui stock registrado`);
         }
 
-        if (stockGeral.totalQuantity < quantidade) {
-          throw new Error(`Stock insuficiente para ${item.product.name}. Disponível: ${stockGeral.totalQuantity}`);
+        // Verificar se tem estoque suficiente no STOCK
+        // Stock usa Int, item usa Float - converter para comparação
+        if (stockGeral.totalQuantity < Math.ceil(quantidade)) {
+          throw new Error(`Stock insuficiente para ${item.product.name}. Disponível: ${stockGeral.totalQuantity}, Solicitado: ${quantidade}`);
         }
 
-        // 2. Buscar lotes (FIFO)
+        // 2. Buscar lotes (FIFO) para descontar
         const lotes = await tx.lote.findMany({
           where: {
             productId: item.productId,
@@ -73,26 +76,33 @@ class ConfirmarPedidoService {
             quantity: { gt: 0 },
           },
           orderBy: [
-            { data_validade: 'asc' },
+            { data_validade: 'asc' }, // Primeiro os que vencem primeiro
             { data_compra: 'asc' },
           ],
         });
 
         let quantidadeRestante = quantidade;
         
-        // 3. Descontar dos lotes
+        // 3. Descontar dos lotes específicos
         for (const lote of lotes) {
           if (quantidadeRestante <= 0) break;
           
-          const quantidadeDoLote = Math.min(lote.quantity, quantidadeRestante);
+          const produtoFracionado = item.product.is_fractional;
           
-          if (quantidadeDoLote > 0) {
+          // Calcular quanto descontar deste lote
+          const quantidadeParaDescontar = produtoFracionado 
+            ? Math.min(lote.quantity, quantidadeRestante) // Mantém decimal para fracionados
+            : Math.min(lote.quantity, Math.ceil(quantidadeRestante)); // Arredonda para inteiros
+          
+          if (quantidadeParaDescontar > 0) {
             // Atualizar lote
+            const novoQuantityLote = lote.quantity - quantidadeParaDescontar;
+            
             await tx.lote.update({
               where: { id: lote.id },
               data: {
-                quantity: lote.quantity - quantidadeDoLote,
-                isActive: (lote.quantity - quantidadeDoLote) > 0,
+                quantity: novoQuantityLote,
+                isActive: novoQuantityLote > 0,
               },
             });
 
@@ -101,7 +111,7 @@ class ConfirmarPedidoService {
               data: {
                 type: "saída",
                 price: lote.preco_compra || 0,
-                quantity: quantidadeDoLote,
+                quantity: quantidadeParaDescontar,
                 created_at: new Date(),
                 productId: item.productId,
                 organizationId,
@@ -111,19 +121,25 @@ class ConfirmarPedidoService {
               },
             });
 
-            quantidadeRestante -= quantidadeDoLote;
+            quantidadeRestante -= quantidadeParaDescontar;
           }
         }
 
-        // 4. Atualizar stock geral
+        // Verificar se toda quantidade foi alocada dos lotes
+        if (quantidadeRestante > 0.001) {
+          throw new Error(`Não foi possível alocar toda a quantidade de ${item.product.name} dos lotes disponíveis`);
+        }
+
+        // 4. Atualizar stock geral (diminuir)
         await tx.stock.update({
           where: { id: stockGeral.id },
           data: {
-            totalQuantity: stockGeral.totalQuantity - quantidade,
+            totalQuantity: stockGeral.totalQuantity - Math.ceil(quantidade),
           },
         });
 
-        // 5. Atualizar/Inserir no economato da área de destino
+        // 5. Adicionar ao economato da área de DESTINO
+        // O pedido sempre vai da organização (stock) para uma área específica
         const economatoExistente = await tx.economato.findFirst({
           where: {
             areaId: pedido.areaDestinoId,
@@ -136,7 +152,7 @@ class ConfirmarPedidoService {
           await tx.economato.update({
             where: { id: economatoExistente.id },
             data: {
-              quantity: { increment: item.quantity },
+              quantity: { increment: quantidade },
             },
           });
         } else {
@@ -144,16 +160,16 @@ class ConfirmarPedidoService {
             data: {
               areaId: pedido.areaDestinoId,
               productId: item.productId,
-              quantity: item.quantity,
+              quantity: quantidade,
               organizationId,
             },
           });
         }
 
-        // 6. Atualizar quantidade enviada
+        // 6. Atualizar quantidade enviada no item
         await tx.itemPedidoArea.update({
           where: { id: item.id },
-          data: { quantitySent: item.quantity },
+          data: { quantitySent: quantidade },
         });
       }
 
@@ -170,14 +186,14 @@ class ConfirmarPedidoService {
         },
       });
 
-      // 8. Atualizar pedido
+      // 8. Atualizar status do pedido
       const pedidoAtualizado = await tx.pedidoArea.update({
         where: { id: pedido.id },
         data: {
           status: "processado",
           processadoEm: new Date(),
           processadoPor: usuarioId,
-          confirmationCode: null, // Limpar código
+          confirmationCode: null, // Limpar código após uso
         },
       });
 
