@@ -40,8 +40,8 @@ export function middleware(request: NextRequest) {
   const authRoutes = [
     '/login',
     '/register',
-    '/activate'
-    // REMOVIDO: '/cardapio/:path*' - isso não funciona no middleware
+    '/activate',
+    
   ]
 
   // Rotas públicas que podem ser acessadas mesmo quando logado

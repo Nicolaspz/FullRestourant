@@ -63,101 +63,7 @@ const controller = new RecipeController();
 const OrderSend = new OrderSendController();
 const DashboardContro = new DashboardController();
 const faturaController = new FaturaController();
-//Routas USER
-router.post('/users', createUserController.hadle)
-router.get('/users', isAuthenticated, userController.listUsers)
-router.get('/all_users', isAuthenticated, userController.listAllUsers)
-router.get('/user', isAuthenticated, userController.UserById)
-router.put('/user', isAuthenticated, userController.updateUser)
-router.delete('/user', isAuthenticated, userController.deleteUser)
 
-
-router.post('/session', Authcontroller.handle)
-router.get('/me', isAuthenticated, DetailController.handle)
-
-//ROUTAS CATEGORY
-router.post('/category', isAuthenticated, CreateCategoryContoller.handdle)
-router.get('/category', categoryListController.handdle)
-router.put('/category', isAuthenticated, CreateCategoryContoller.updateCategory)
-router.delete('/category', isAuthenticated, CreateCategoryContoller.deleteCategory)
-
-//Routas Produtos 
-router.post('/produts', isAuthenticated, upload.single('file'), produCreateController.handle)
-router.get('/category/produts', listByCategoryController.handdle)
-router.get('/produts', listAllProdutsController.handdle)
-router.delete('/produt', isAuthenticated, produCreateController.deleteProduct)
-router.put('/produt', isAuthenticated, upload.single('file'), produCreateController.updateProduct)
-router.get('/produt', isAuthenticated, listByCategoryController.getProdById)
-
-
-//ROUTAS ORDER
-router.post('/orderQr', orderController.handdle);
-router.post('/order', isAuthenticated, orderController.handdle);
-router.post('/orders/with-stock', OrderSend.createWithStockUpdate);
-router.post('/token/verify', OrderSend.ChekVerify);
-router.get('/mesa_verify/:number', isAuthenticated, orderController.verify);
-router.delete('/order', deleteOrderController.handdle);
-router.post('/order/add', addListOrderController.handdle);
-router.delete('/order/remove', removeItemController.handdle);
-router.put('/order/send', isAuthenticated, sendOrderController.handdle);
-router.get('/orders', isAuthenticated, listOrdersController.handdle);
-router.put('/items/:itemId/toggle-prepared', isAuthenticated, listOrdersController.togglePrepared);
-router.get('/sec_fact', isAuthenticated, listOrdersController.getFaturaSessionId);
-router.get('/close_table/:number', isAuthenticated, listOrdersController.fecharMesa);
-router.get('/ordersdat', isAuthenticated, listOrdersController.ListOrderByData);
-router.get('/order/details', isAuthenticated, detailOrderController.handdle);
-router.put('/order/finish', isAuthenticated, finishOrderController.handdle);
-
-
-//Organização
-router.post('/organization', organizationController.create)
-router.delete('/organization', isAuthenticated, organizationController.delete)
-router.put('/organization/:id', isAuthenticated, upload.single('imageLogo'), organizationController.update)
-router.get('/organization', isAuthenticated, organizationController.findById)
-router.get('/organizations', isAuthenticated, organizationController.findByAll)
-//Stock
-
-router.post('/stock', isAuthenticated, stockController.addProductToStock)
-router.post('/stock_remuv', isAuthenticated, stockController.RemovProductToStock)
-router.get('/stock', isAuthenticated, stockController.AllSockByOrganization)
-router.get('/stock_category', isAuthenticated, stockController.AllSockByCategory)
-router.get('/stockQr', stockController.AllSockByOrganization)
-router.get('/stock_categoryQr', stockController.AllSockByCategory)
-router.put('/price', isAuthenticated, stockController.ConfirmPreco)
-router.put('/price/custom', isAuthenticated, stockController.updateCustomPrice)
-
-// compras
-router.post('/compra', isAuthenticated, compra.handdle)
-router.delete('/compra', isAuthenticated, compra.Delete)
-router.delete('/compra_produt', isAuthenticated, compraProdut.Delete)
-router.delete('/remuvProdcompra', isAuthenticated, compraProdut.RemuvProdu)
-router.post('/compra_produt', isAuthenticated, compraProdut.handdle)
-router.get('/produts_list_compra', isAuthenticated, compraProdut.ListaByCompra)
-router.get('/compra', isAuthenticated, compra.GetAll)
-
-//mesa
-
-router.post('/mesa', isAuthenticated, mesaController.Create);
-router.get('/mesaOpened/:organizationId', isAuthenticated, mesaController.getMesaOpened);
-router.get('/mesas', isAuthenticated, mesaController.getMesas);
-router.put('/sectionOf', isAuthenticated, mesaController.fecharSessao);
-router.delete('/:id', mesaController.delete);
-
-
-//Receitas
-router.post("/recipe", isAuthenticated, controller.addIngredient);
-router.get('/recipe/:productId', isAuthenticated, controller.listRecipe);
-router.put("/recipe", isAuthenticated, controller.upsertIngredient);
-router.delete("/recipe/:id", isAuthenticated, controller.removeIngredient);
-router.get('/dash/:organizationId', isAuthenticated, DashboardContro.getDashboardData);
-
-//Facturas
-
-router.get('/faturas', faturaController.getFaturas);
-router.get('/faturas/:id', faturaController.getFatura);
-router.post('/faturas/:id/pagamento', isAuthenticated, faturaController.processarPagamento);
-router.post('/faturas/:id/cancelar', isAuthenticated, faturaController.cancelarFatura);
-router.get('/estatisticas/vendas', faturaController.getEstatisticas);
 // Áreas
 import {
   CriarAreaController,
@@ -255,5 +161,101 @@ router.get('/consumo-interno/relatorio', isAuthenticated, relatorioConsumoContro
 router.get('/consumo-interno/:id', isAuthenticated, obterConsumoController.handle);
 router.put('/consumo-interno/:id', isAuthenticated, atualizarConsumoController.handle);
 router.delete('/consumo-interno/:id', isAuthenticated, deletarConsumoController.handle);
+
+//Routas USER
+router.post('/users', createUserController.hadle)
+router.get('/users', isAuthenticated, userController.listUsers)
+router.get('/all_users', isAuthenticated, userController.listAllUsers)
+router.get('/user', isAuthenticated, userController.UserById)
+router.put('/user', isAuthenticated, userController.updateUser)
+router.delete('/user', isAuthenticated, userController.deleteUser)
+
+
+router.post('/session', Authcontroller.handle)
+router.get('/me', isAuthenticated, DetailController.handle)
+
+//ROUTAS CATEGORY
+router.post('/category', isAuthenticated, CreateCategoryContoller.handdle)
+router.get('/category', categoryListController.handdle)
+router.put('/category', isAuthenticated, CreateCategoryContoller.updateCategory)
+router.delete('/category', isAuthenticated, CreateCategoryContoller.deleteCategory)
+
+//Routas Produtos 
+router.post('/produts', isAuthenticated, upload.single('file'), produCreateController.handle)
+router.get('/category/produts', listByCategoryController.handdle)
+router.get('/produts', listAllProdutsController.handdle)
+router.delete('/produt', isAuthenticated, produCreateController.deleteProduct)
+router.put('/produt', isAuthenticated, upload.single('file'), produCreateController.updateProduct)
+router.get('/produt', isAuthenticated, listByCategoryController.getProdById)
+
+
+//ROUTAS ORDER
+router.post('/orderQr', orderController.handdle);
+router.post('/order', isAuthenticated, orderController.handdle);
+router.post('/orders/with-stock', OrderSend.createWithStockUpdate);
+router.post('/token/verify', OrderSend.ChekVerify);
+router.get('/mesa_verify/:number', isAuthenticated, orderController.verify);
+router.delete('/order', deleteOrderController.handdle);
+router.post('/order/add', addListOrderController.handdle);
+router.delete('/order/remove', removeItemController.handdle);
+router.put('/order/send', isAuthenticated, sendOrderController.handdle);
+router.get('/orders', isAuthenticated, listOrdersController.handdle);
+router.put('/items/:itemId/toggle-prepared', isAuthenticated, listOrdersController.togglePrepared);
+router.get('/sec_fact', isAuthenticated, listOrdersController.getFaturaSessionId);
+router.get('/close_table/:number', isAuthenticated, listOrdersController.fecharMesa);
+router.get('/ordersdat', isAuthenticated, listOrdersController.ListOrderByData);
+router.get('/order/details', isAuthenticated, detailOrderController.handdle);
+router.put('/order/finish', isAuthenticated, finishOrderController.handdle);
+
+
+//Organização
+router.post('/organization', organizationController.create)
+router.delete('/organization', isAuthenticated, organizationController.delete)
+router.put('/organization/:id', isAuthenticated, upload.single('imageLogo'), organizationController.update)
+router.get('/organization', isAuthenticated, organizationController.findById)
+router.get('/organizations', isAuthenticated, organizationController.findByAll)
+//Stock
+
+router.post('/stock', isAuthenticated, stockController.addProductToStock)
+router.post('/stock_remuv', isAuthenticated, stockController.RemovProductToStock)
+router.get('/stock', isAuthenticated, stockController.AllSockByOrganization)
+router.get('/stock_category', isAuthenticated, stockController.AllSockByCategory)
+router.get('/stockQr', stockController.AllSockByOrganization)
+router.get('/stock_categoryQr', stockController.AllSockByCategory)
+router.put('/price', isAuthenticated, stockController.ConfirmPreco)
+router.put('/price/custom', isAuthenticated, stockController.updateCustomPrice)
+
+// compras
+router.post('/compra', isAuthenticated, compra.handdle)
+router.delete('/compra', isAuthenticated, compra.Delete)
+router.delete('/compra_produt', isAuthenticated, compraProdut.Delete)
+router.delete('/remuvProdcompra', isAuthenticated, compraProdut.RemuvProdu)
+router.post('/compra_produt', isAuthenticated, compraProdut.handdle)
+router.get('/produts_list_compra', isAuthenticated, compraProdut.ListaByCompra)
+router.get('/compra', isAuthenticated, compra.GetAll)
+
+//mesa
+
+router.post('/mesa', isAuthenticated, mesaController.Create);
+router.get('/mesaOpened/:organizationId', isAuthenticated, mesaController.getMesaOpened);
+router.get('/mesas', isAuthenticated, mesaController.getMesas);
+router.put('/sectionOf', isAuthenticated, mesaController.fecharSessao);
+router.delete('/mesa/:id',isAuthenticated, mesaController.delete);
+
+
+//Receitas
+router.post("/recipe", isAuthenticated, controller.addIngredient);
+router.get('/recipe/:productId', isAuthenticated, controller.listRecipe);
+router.put("/recipe", isAuthenticated, controller.upsertIngredient);
+router.delete("/recipe/:id", isAuthenticated, controller.removeIngredient);
+router.get('/dash/:organizationId', isAuthenticated, DashboardContro.getDashboardData);
+
+//Facturas
+
+router.get('/faturas', faturaController.getFaturas);
+router.get('/faturas/:id', faturaController.getFatura);
+router.post('/faturas/:id/pagamento', isAuthenticated, faturaController.processarPagamento);
+router.post('/faturas/:id/cancelar', isAuthenticated, faturaController.cancelarFatura);
+router.get('/estatisticas/vendas', faturaController.getEstatisticas);
 
 export { router }

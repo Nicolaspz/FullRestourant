@@ -59,15 +59,44 @@ export default function GerenciamentoMesasPage() {
       setIsLoading(false);
     }
   };
+  const criarMesa = async () => {
+  try {
+    const ultimoNumero =
+      mesas.length > 0
+        ? Math.max(...mesas.map(m => m.number))
+        : 0;
 
-  const gerarQRCode = async (mesaId: string, mesaNumber: number) => {
+    const novoNumero = ultimoNumero + 1;
+
+    await apiClient.post(
+      '/mesa',
+      {
+        numero: novoNumero,
+        organizationId: user?.organizationId
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    toast.success(`Mesa ${novoNumero} criada com sucesso!`);
+    fetchMesas();
+  } catch (error) {
+    console.error('Erro ao criar mesa:', error);
+    toast.error('Erro ao criar mesa');
+  }
+};
+
+const gerarQRCode = async (mesaId: string, mesaNumber: number) => {
     try {
       const qrData = {
         url: `${window.location.origin}/menu/${user?.organizationId}/${mesaNumber}`,
         mesaId,
         mesaNumber
       };
-
+      console.log("dados de Qr", qrData)
       const response = await apiClient.post('/mesas/gerar-qrcode', qrData);
       
       setMesas(prev => prev.map(mesa => 
@@ -79,7 +108,7 @@ export default function GerenciamentoMesasPage() {
       console.error('Erro ao gerar QR Code:', error);
       toast.error('Erro ao gerar QR Code');
     }
-  };
+};
 
   const criarReserva = async (reservaData: any) => {
     if (!reservaData.mesaId || !reservaData.clienteNome || !reservaData.dataReserva) {
@@ -144,6 +173,28 @@ export default function GerenciamentoMesasPage() {
       toast.error('Erro ao fechar mesa');
     }
   };
+const eliminarMesa = async (mesaId: string) => {
+  try {
+    await apiClient.delete(`/mesa/${mesaId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    toast.success('Mesa eliminada com sucesso');
+    fetchMesas(); // refresh
+
+  } catch (error: any) {
+    const message =
+      error?.response?.data?.message || 'Erro ao eliminar mesa';
+
+    if (error.response?.status === 409) {
+      toast.warning(message);
+    } else {
+      toast.error(message);
+    }
+  }
+};
 
   // Filtrar mesas
   const mesasLivres = mesas.filter(m => m.status === 'livre');
@@ -165,7 +216,7 @@ export default function GerenciamentoMesasPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <Header />
+      <Header  />
       
       {activeTab === 'nova-reserva' ? (
         <NovaReservaForm
@@ -185,10 +236,14 @@ export default function GerenciamentoMesasPage() {
           user={user}
           onGerarQRCode={gerarQRCode}
           onFecharMesa={fecharMesa}
+          onEliminarMesa={eliminarMesa}
         />
       )}
-
-      <AddMesaButton />
+      <Button onClick={criarMesa} className="flex items-center gap-2 mt-2">
+      <Plus className="h-4 w-4" />
+      Nova Mesa
+      </Button>
+     
     </div>
   );
 }
@@ -201,13 +256,3 @@ const Header = () => (
   </div>
 );
 
-const AddMesaButton = () => (
-  <div className="fixed bottom-6 right-6">
-    <Button 
-      size="lg" 
-      className="rounded-full h-14 w-14 shadow-lg hover:shadow-xl transition-shadow"
-    >
-      <Plus className="h-6 w-6" />
-    </Button>
-  </div>
-);

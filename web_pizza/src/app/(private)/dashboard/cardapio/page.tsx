@@ -201,7 +201,7 @@ const TableSelectionPage = () => {
       
       // Extrair organizationId e tableNumber da URL
       // Formato esperado: /dashboard/cardapio/{organizationId}/{tableNumber}
-      const urlPattern = /\/dashboard\/cardapio\/([^\/]+)\/(\d+)/i
+      const urlPattern = /\/menu\/([^\/]+)\/(\d+)/i
       const match = qrData.match(urlPattern)
       
       let extractedOrgId = user?.organizationId

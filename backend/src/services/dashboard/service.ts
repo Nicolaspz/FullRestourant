@@ -42,14 +42,17 @@ export class DashboardService {
   }
 
   private normalizeDates(filters: DashboardFilters): { startDate: Date; endDate: Date } {
-    let startDate = new Date(filters.startDate);
-    let endDate = new Date(filters.endDate);
+  let startDate = new Date(filters.startDate);
+  let endDate = new Date(filters.endDate);
 
-    // Ajustar para o final do dia
-    endDate.setHours(23, 59, 59, 999);
+  // Garantir início do dia para startDate
+  startDate.setHours(0, 0, 0, 0);
 
-    return { startDate, endDate };
-  }
+  // Fim do dia para endDate
+  endDate.setHours(23, 59, 59, 999);
+
+  return { startDate, endDate };
+}
 
   private async getMetrics(organizationId: string, startDate: Date, endDate: Date) {
     const previousPeriod = this.getPreviousPeriod(startDate, endDate);

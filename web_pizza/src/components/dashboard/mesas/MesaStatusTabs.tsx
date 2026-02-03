@@ -19,6 +19,8 @@ interface MesaStatusTabsProps {
   mesasReservadas: Mesa[];
   user: any;
   onFecharMesa: (mesaId: string) => void;
+  onEliminarMesa: (mesaId: string) => void;
+   onGerarQRCode?: (mesaId: string, mesaNumber: number) => Promise<void>;
 }
 
 const MesaStatusTabs = ({
@@ -29,7 +31,9 @@ const MesaStatusTabs = ({
   mesasOcupadas,
   mesasReservadas,
   user,
-  onFecharMesa
+  onFecharMesa,
+   onEliminarMesa,
+  onGerarQRCode
 }: MesaStatusTabsProps) => {
   return (
     <Tabs value={activeTab} onValueChange={onTabChange}>
@@ -60,7 +64,9 @@ const MesaStatusTabs = ({
               user={user}
               onReservar={() => {}}
               onFecharMesa={onFecharMesa}
+              onEliminarMesa={onEliminarMesa}
             />
+            
           ))}
         </div>
       </TabsContent>
@@ -69,23 +75,33 @@ const MesaStatusTabs = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {mesasLivres.map(mesa => (
             <Card key={`livre-${mesa.id}`}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <QrCode className="h-5 w-5" />
-                  Mesa {mesa.number}
-                </CardTitle>
-                <CardDescription>Livre para {mesa.capacidade} pessoas</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <QRCodePrinter
-                  organizationId={user?.organizationId}
-                  mesaNumber={mesa.number}
-                />
-                <p className="text-xs text-gray-500 mt-2 text-center">
-                  URL: /dashboard/cardapio/{user?.organizationId}/{mesa.number}
-                </p>
-              </CardContent>
-            </Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <QrCode className="h-5 w-5" />
+                Mesa {mesa.number}
+              </CardTitle>
+              <CardDescription>
+                Livre para {mesa.capacidade} pessoas
+              </CardDescription>
+            </CardHeader>
+
+          <CardContent>
+            <QRCodePrinter
+              organizationId={user?.organizationId}
+              mesaNumber={mesa.number}
+            />
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              URL: /dashboard/cardapio/{user?.organizationId}/{mesa.number}
+            </p>
+          </CardContent>
+
+          <CardFooter className="flex justify-between">
+            <Badge variant="secondary">LIVRE</Badge>
+
+            
+          </CardFooter>
+          </Card>
+
           ))}
         </div>
       </TabsContent>

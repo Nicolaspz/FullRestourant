@@ -144,16 +144,59 @@ class MesaService {
   }
 
   // Método para excluir uma mesa
-  async deleteMesa(id) {
-    try {
-      await prismaClient.mesa.delete({
-        where: { id },
-      });
-      return { message: 'Mesa excluída com sucesso' };
-    } catch (error) {
-      throw new Error('Erro ao excluir mesa: ' + error.message);
+ async deleteMesa(id: string) {
+  try {
+    // 1. Verificar se a mesa existe
+    const mesa = await prismaClient.mesa.findUnique({
+      where: { id },
+    });
+
+    if (!mesa) {
+      throw new Error('Mesa não encontrada');
     }
+
+    // 2. Verificar sessão ativa
+    const sessaoAtiva = await prismaClient.session.findFirst({
+      where: {
+        mesaId: id,
+        status: true,
+      },
+    });
+
+    if (sessaoAtiva) {
+      throw new Error(
+        'Não é possível eliminar a mesa: existe sessão ativa'
+      );
+    }
+
+    // 3. Verificar reservas pendentes/confirmadas
+    const reservaAtiva = await prismaClient.reserva.findFirst({
+      where: {
+        mesaId: id,
+        status: {
+          in: ['pendente', 'confirmada'],
+        },
+      },
+    });
+
+    if (reservaAtiva) {
+      throw new Error(
+        'Não é possível eliminar a mesa: existem reservas associadas'
+      );
+    }
+
+    // 4. Apagar mesa
+    await prismaClient.mesa.delete({
+      where: { id },
+    });
+
+    return { message: 'Mesa excluída com sucesso' };
+
+  } catch (error: any) {
+    throw new Error(error.message || 'Erro ao excluir mesa');
   }
+}
+
 
   async getAllMesasByOrganization(organizationId?: string) {
     try {

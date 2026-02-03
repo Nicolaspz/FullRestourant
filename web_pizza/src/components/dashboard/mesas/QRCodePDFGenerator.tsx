@@ -25,7 +25,7 @@ const QRCodePrinter = ({
       
       // URL completa do cardápio
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-      const cardapioUrl = `${baseUrl}/dashboard/cardapio/${organizationId}/${mesaNumber}`;
+      const cardapioUrl = `${baseUrl}/menu/${organizationId}/${mesaNumber}`;
       
       // Gerar QR Code
       const qrCodeDataUrl = await QRCode.toDataURL(cardapioUrl, {

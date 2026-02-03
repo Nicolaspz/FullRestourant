@@ -47,7 +47,7 @@ const menuItems = [
   },
   { 
     icon: Package, 
-    label: "Produtos", 
+    label: "Produtos / Pratos", 
     href: "/dashboard/products",
     roles: ['Super Admin', 'Admin'] as UserRole[]
   },

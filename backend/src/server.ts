@@ -19,7 +19,9 @@ const corsOptions = {
     // Lista de origens permitidas
     const allowedOrigins = [
       'http://localhost:3000',
-      'http://192.168.43.188:3000', 
+      'http://192.168.43.188:3000',
+      'http://172.20.10.5:3000', 
+     
       // Adicione mais se necessário
     ];
     
