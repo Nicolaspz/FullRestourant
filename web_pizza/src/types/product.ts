@@ -28,25 +28,38 @@ export interface Category {
   }
   
   export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  banner?: string;
+  unit: string;
+  is_fractional: boolean;
+  isDerived: boolean;
+  isIgredient: boolean;
+  PrecoVenda: PrecoVenda[];
+  recipeItems: RecipeItem[];
+  categoryId: string;
+  organizationId: string;
+  defaultAreaId?: string; // ← Já tem
+  defaultArea?: { // ← Adicione esta propriedade
     id: string;
+    nome: string;
+    descricao?: string;
+  };
+  Category?: {
     name: string;
-    description: string;
-    banner?: string;
-    unit: string;
-    is_fractional: boolean;
-    isDerived: boolean;
-    isIgredient: boolean;
-    PrecoVenda: PrecoVenda[];
-    recipeItems: RecipeItem[];
-    categoryId: string;
-    organizationId: string;
-    Category?: {
-      name: string;
-      id:string
+    id: string;
+  };
+  productAreaMappings?: Array<{ // ← Opcional
+    area: {
+      id: string;
+      nome: string;
     };
-    created_at?: string;
-    updated_at?: string;
-  }
+    isDefault: boolean;
+  }>;
+  created_at?: string;
+  updated_at?: string;
+}
   
   // Em @/types/product.ts
 export interface ProductFormData {
@@ -59,7 +72,8 @@ export interface ProductFormData {
   file: File | null;
   previewImage: string;
   price: number;
-  existingBanner?: string; // Adicione esta linha
+  existingBanner?: string;
+  defaultAreaId: string;
 }
 export interface Ingredient {
   id: string;
@@ -75,6 +89,7 @@ export interface Ingredient {
   category?: Category; // Adicione esta linha
   created_at?: string;
   updated_at?: string;
+  defaultAreaId?:string;
 }
   
   export interface CartItem {

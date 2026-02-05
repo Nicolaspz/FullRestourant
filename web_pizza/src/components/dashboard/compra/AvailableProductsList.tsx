@@ -94,31 +94,48 @@ export function AvailableProductsList({ purchaseId, onAddSuccess }: AvailablePro
   };
 
   const handleAddProduct = async () => {
-    if (!selectedProduct) return;
+  if (!selectedProduct || !user?.organizationId) {
+    toast.error('Selecione um produto e certifique-se de estar autenticado');
+    return;
+  }
+  
+  try {
+    // Se você sabe que o tipo "Alimentar" tem ID "1" no seu banco
+    const productTypeId = formData.productTypeId || "f7dddb0a-9176-4993-9421-3c0b6b4dd9d4";
     
-    try {
-      await apiClient.post('/compra_produt', {
-        ...formData,
-        purchaseId,
-        productId: selectedProduct.id,
-        productTypeId: "1"
-      }, {
-        headers: {
-          Authorization: `Bearer ${user?.token}`
-        }
-      });
-      
-      toast.success('Produto adicionado à compra!');
-      onAddSuccess();
-      handleCloseModal();
-    } catch (error: any) {
-      const { response } = error;
+    await apiClient.post('/compra_produt', {
+      ...formData,
+      purchaseId,
+      productId: selectedProduct.id,
+      productTypeId: "6c9a4871-7afa-4bf8-b7d0-b24239b19ef2",
+      organizationId: user.organizationId // OBRIGATÓRIO
+    }, {
+      headers: {
+        Authorization: `Bearer ${user?.token}`
+      }
+    });
+    
+    toast.success('Produto adicionado à compra!');
+    onAddSuccess();
+    handleCloseModal();
+  } catch (error: any) {
+    const { response } = error;
+    
+    // Tratamento específico para erros comuns
+    if (response?.data?.error?.includes('organization')) {
+      toast.error('Erro de organização. Faça login novamente.');
+      // Redirecionar para login
+      // navigate('/login');
+    } else if (response?.data?.error?.includes('Tipo de produto')) {
+      toast.error('Tipo de produto inválido. Contate o administrador.');
+    } else {
       const errorMessage = response?.data?.error || 'Erro ao adicionar produto';
-      
       toast.error(errorMessage);
-      console.log(response?.data);
     }
-  };
+    
+    console.log('Detalhes do erro:', response?.data);
+  }
+};
 
   useEffect(() => {
     if (user?.token) {

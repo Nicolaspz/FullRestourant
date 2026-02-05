@@ -55,6 +55,7 @@ export function AreasTable() {
       setIsLoading(true);
       const data = await economatoService.getAreas(user.organizationId);
       setAreas(data);
+      console.log("áreas",data)
     } catch (error) {
       console.error("Erro ao carregar áreas:", error);
       toast.error("Erro ao carregar áreas");

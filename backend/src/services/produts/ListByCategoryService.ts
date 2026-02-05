@@ -43,59 +43,67 @@ class ListByCategoryService {
   }
 
   async ListAllProduts({ organizationId }: RequestListList) {
-    return await prismaClient.product.findMany({
-      where: {
-        organizationId: organizationId,
+  return await prismaClient.product.findMany({
+    where: {
+      organizationId: organizationId,
+    },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      banner: true,
+      unit: true,
+      is_fractional: true,
+      isDerived: true,
+      isIgredient: true,
+      defaultAreaId: true, // ← ADICIONE ESTA LINHA
+      Category: {
+        select: {
+          name: true,
+          id: true
+        },
       },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        banner: true,
-        unit: true,
-        is_fractional: true,
-        isDerived: true,
-        isIgredient: true,
-        Category: {
-          select: {
-            name: true,
-            id:true
-          },
+      defaultArea: { // ← ADICIONE ESTA RELAÇÃO
+        select: {
+          id: true,
+          nome: true,
+          descricao: true
+        }
+      },
+      PrecoVenda: {  // Adicionando o preço vigente
+        where: {
+          data_fim: null,  // Somente o preço atual
         },
-        PrecoVenda: {  // Adicionando o preço vigente
-          where: {
-            data_fim: null,  // Somente o preço atual
-          },
-          select: {
-            preco_venda: true,
-            precoSugerido: true,
-            data_inicio:true,
-          },
-          take: 1,
+        select: {
+          preco_venda: true,
+          precoSugerido: true,
+          data_inicio: true,
         },
-        recipeItems: {
-          select: {
-            ingredientId: true,
-            quantity: true,
-            ingredient: {
-              select: {
-                name: true,
-                PrecoVenda: {  // Preço dos ingredientes (para produtos derivados)
-                  where: {
-                    data_fim: null,
-                  },
-                  select: {
-                    preco_venda: true,
-                  },
-                  take: 1,
+        take: 1,
+      },
+      recipeItems: {
+        select: {
+          ingredientId: true,
+          quantity: true,
+          ingredient: {
+            select: {
+              name: true,
+              PrecoVenda: {  // Preço dos ingredientes (para produtos derivados)
+                where: {
+                  data_fim: null,
                 },
+                select: {
+                  preco_venda: true,
+                },
+                take: 1,
               },
             },
           },
         },
       },
-    });
-  }
+    },
+  });
+}
 
   async getProductById({ productId }: { productId: string }) {
     const product = await prismaClient.product.findUnique({

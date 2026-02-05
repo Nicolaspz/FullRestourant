@@ -13,7 +13,8 @@ class ProdutsCreateController {
       organizationId,
       unit,
       isDerived,
-      isIgredient
+      isIgredient,
+      defaultAreaId,
     } = req.body;
 
     try {
@@ -31,7 +32,8 @@ class ProdutsCreateController {
         organizationId,
         unit,
         isDerived,
-        isIgredient 
+        isIgredient,
+        defaultAreaId
       });
 
       return res.status(201).json(product);
@@ -66,7 +68,8 @@ class ProdutsCreateController {
       organizationId,
       unit,
       isDerived,
-      isIgredient
+      isIgredient,
+      defaultAreaId
     } = req.body;
 
     if (!id) {
@@ -89,7 +92,8 @@ class ProdutsCreateController {
           organizationId,
           unit,
           isDerived,
-          isIgredient
+          isIgredient,
+          defaultAreaId
         },
         id as string
       );

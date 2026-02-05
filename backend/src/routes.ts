@@ -230,7 +230,7 @@ router.post('/compra', isAuthenticated, compra.handdle)
 router.delete('/compra', isAuthenticated, compra.Delete)
 router.delete('/compra_produt', isAuthenticated, compraProdut.Delete)
 router.delete('/remuvProdcompra', isAuthenticated, compraProdut.RemuvProdu)
-router.post('/compra_produt', isAuthenticated, compraProdut.handdle)
+router.post('/compra_produt', isAuthenticated, compraProdut.handle)
 router.get('/produts_list_compra', isAuthenticated, compraProdut.ListaByCompra)
 router.get('/compra', isAuthenticated, compra.GetAll)
 

@@ -48,7 +48,7 @@ export default function KitchenPage() {
   const [loading, setLoading] = useState(true);
   const [userLoading, setUserLoading] = useState(true);
 
-  const CATEGORY_FILTER = "Comida";
+  const CATEGORY_FILTER = "Derived";
 
   const fetchOrders = async () => {
     if (!user?.organizationId || !user?.token) return;

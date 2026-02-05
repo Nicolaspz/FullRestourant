@@ -15,7 +15,6 @@ import { Organization } from "@/types/product";
 import StockPage from "./stock/page";
 import PedidosPage from "./pedidos/page";
 import ConsumoPage from "./consumo/page";
-import AreasPage from "./areas/page";
 import { SettingsHeader } from "@/components/settings/SettingsHeader";
 import { SettingsTabs } from "@/components/settings/SettingsTabs";
 

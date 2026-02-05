@@ -11,12 +11,13 @@ interface ProdutsRequest {
   unit: string;
   isDerived: string;
   isIgredient:string;
+  defaultAreaId:string;
 }
 
 
 
 class ProdutsCreateServices {
-  async execute({ name,description, banner, categoryId, organizationId, unit, isDerived,isIgredient  }: ProdutsRequest) {
+  async execute({ name,description, banner, categoryId, organizationId, unit, isDerived,isIgredient,defaultAreaId  }: ProdutsRequest) {
       
     // CONVERTER STRINGS PARA BOOLEAN
     const isDerivedBoolean = isDerived === 'true';
@@ -26,6 +27,7 @@ class ProdutsCreateServices {
       name,
       isDerived,
       isIgredient,
+      defaultAreaId,
       converted: {
         isDerivedBoolean,
         isIgredientBoolean
@@ -41,7 +43,8 @@ class ProdutsCreateServices {
         organizationId,
         unit,
        isDerived: isDerivedBoolean, // Usar o boolean convertido
-        isIgredient: isIgredientBoolean
+      isIgredient: isIgredientBoolean,
+      defaultAreaId,
       },
       select: {
         id: true,
@@ -52,6 +55,7 @@ class ProdutsCreateServices {
         organizationId: true,
         unit: true,
         isDerived: true,
+        defaultAreaId:true,
       }
     });
 
@@ -91,7 +95,7 @@ class ProdutsCreateServices {
     }
   }
 
-  async updateProduct({ name,description, banner, categoryId, organizationId, unit, isDerived,isIgredient }: ProdutsRequest, productId: string): Promise<void> {
+  async updateProduct({ name,description, banner, categoryId, organizationId, unit, isDerived,isIgredient,defaultAreaId}: ProdutsRequest, productId: string): Promise<void> {
     
     const isDerivedBoolean = isDerived === 'true';
     const isIgredientBoolean = isIgredient === 'true';
@@ -113,7 +117,8 @@ class ProdutsCreateServices {
         organizationId,
         unit,
         isDerived:isDerivedBoolean,
-        isIgredient:isIgredientBoolean
+        isIgredient:isIgredientBoolean,
+        defaultAreaId
       },
     });
   }

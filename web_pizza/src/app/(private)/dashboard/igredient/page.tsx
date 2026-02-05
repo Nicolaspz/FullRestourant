@@ -88,7 +88,7 @@ export default function IngredientsPage() {
       const ingredientProducts = ingredientsResponse.data.filter(
         (product: Ingredient) => product.isIgredient === true
       );
-      
+      console.log("visão geral",ingredientProducts)
       setIngredients(ingredientProducts);
       setFilteredIngredients(ingredientProducts);
       setCategories(categoriesResponse.data);
@@ -140,7 +140,8 @@ export default function IngredientsPage() {
       formPayload.append('categoryId', IGREDIENT_CATEGORY_ID);
       formPayload.append('organizationId', user?.organizationId || '');      
       formPayload.append('isDerived', JSON.stringify(false));    
-      formPayload.append('isIgredient', JSON.stringify(true));    
+      formPayload.append('isIgredient', JSON.stringify(true)); 
+      formPayload.append('defaultAreaId', ingredientData.defaultAreaId);    
       
       if (ingredientData.file) {
         formPayload.append('file', ingredientData.file);
@@ -188,6 +189,7 @@ export default function IngredientsPage() {
       formPayload.append('organizationId', user?.organizationId || '');
       formPayload.append('isDerived', JSON.stringify(false));    
       formPayload.append('isIgredient', JSON.stringify(true)); 
+      formPayload.append('defaultAreaId', ingredientData.defaultAreaId);
       if (ingredientData.file) {
         formPayload.append('file', ingredientData.file);
       }

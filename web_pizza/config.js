@@ -25,7 +25,7 @@ export const getApiBaseUrl = () => {
   
   // Exporta como constante ou função
   export const API_BASE_URL = getApiBaseUrl();
-  export const DERIVED_CATEGORY_ID = "163fda9f-bc11-4d63-a579-d307a481ad72";
-  export const IGREDIENT_CATEGORY_ID = "fbf20a10-a4a0-4eae-8898-99abe1af23b4";
+  export const DERIVED_CATEGORY_ID = "bd9b9cc9-05c7-4f71-b63a-bc5c3ed86db8";
+  export const IGREDIENT_CATEGORY_ID = "22576d57-2863-414c-80da-660beb93545e";
   
   // OU exporte só a função e use onde precisar

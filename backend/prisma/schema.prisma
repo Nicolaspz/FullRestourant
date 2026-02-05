@@ -8,39 +8,40 @@ datasource db {
 }
 
 model Organization {
-  id               String             @id @default(uuid())
-  name             String
-  address          String?            @unique
-  imageLogo        String?
-  nif              String?
-  created_at       DateTime?          @default(now())
-  updated_at       DateTime?          @default(now())
-  users            User[]
-  categories       Category[]
-  products         Product[]
-  orders           Order[]
-  Stock            Stock[]
-  StockHistory     StockHistory[]
-  Item             Item[]
-  purchases        Purchase[]
-  activeLicense    Boolean            @default(true)
-  margin_stock     Int?
-  margin_dish      Int?
-  Supplier         Supplier[]
-  mesas            Mesa[]
-  reservas         Reserva[]
-  SalePriceHistory SalePriceHistory[]
-  PurchaseProduct  PurchaseProduct[]
-  ProductType      ProductType[]
-  Recipe           Recipe[]
-  Session          Session[]
-  OrderSession     OrderSession[]
-  Lote             Lote[]
-  areas            Area[]
-  economatoes      Economato[]
-  pedidoAreas      PedidoArea[]
-  itemPedidoAreas  ItemPedidoArea[]
-  consumoInternos  ConsumoInterno[]
+  id                  String               @id @default(uuid())
+  name                String
+  address             String?              @unique
+  imageLogo           String?
+  nif                 String?
+  created_at          DateTime?            @default(now())
+  updated_at          DateTime?            @default(now())
+  users               User[]
+  categories          Category[]
+  products            Product[]
+  orders              Order[]
+  Stock               Stock[]
+  StockHistory        StockHistory[]
+  Item                Item[]
+  purchases           Purchase[]
+  activeLicense       Boolean              @default(true)
+  margin_stock        Int?
+  margin_dish         Int?
+  Supplier            Supplier[]
+  mesas               Mesa[]
+  reservas            Reserva[]
+  SalePriceHistory    SalePriceHistory[]
+  PurchaseProduct     PurchaseProduct[]
+  ProductType         ProductType[]
+  Recipe              Recipe[]
+  Session             Session[]
+  OrderSession        OrderSession[]
+  Lote                Lote[]
+  areas               Area[]
+  economatoes         Economato[]
+  pedidoAreas         PedidoArea[]
+  itemPedidoAreas     ItemPedidoArea[]
+  consumoInternos     ConsumoInterno[]
+  productAreaMappings ProductAreaMapping[]
 
   @@map("organizations")
 }
@@ -69,39 +70,59 @@ model Category {
   products       Product[]
   Organization   Organization? @relation(fields: [organizationId], references: [id])
   organizationId String?
+   @@unique([name, organizationId])
 
   @@map("categories")
 }
 
 model Product {
-  id               String             @id @default(uuid())
-  name             String
-  description      String
-  banner           String
-  unit             String
-  is_fractional    Boolean            @default(false)
-  created_at       DateTime?          @default(now())
-  updated_at       DateTime?          @default(now())
-  Category         Category           @relation(fields: [categoryId], references: [id])
-  categoryId       String
-  items            Item[]
-  Organization     Organization?      @relation(fields: [organizationId], references: [id])
-  organizationId   String?
-  isDerived        Boolean            @default(false)
-  isIgredient      Boolean            @default(false)
-  Stock            Stock[]
-  recipeItems      Recipe[]           @relation("ProductRecipe") // se for prato
-  usedIn           Recipe[]           @relation("IngredientRecipe") // se for insumo
-  StockHistory     StockHistory[]
-  purchaseProducts PurchaseProduct[]
-  SalePriceHistory SalePriceHistory[]
-  PrecoVenda       PrecoVenda[]
-  Lote             Lote[]
-  economatoes      Economato[]
-  itemPedidoAreas  ItemPedidoArea[]
-  consumoInternos  ConsumoInterno[]
+  id                  String               @id @default(uuid())
+  name                String
+  description         String
+  banner              String
+  unit                String
+  is_fractional       Boolean              @default(false)
+  created_at          DateTime?            @default(now())
+  updated_at          DateTime?            @default(now())
+  Category            Category             @relation(fields: [categoryId], references: [id])
+  categoryId          String
+  items               Item[]
+  Organization        Organization?        @relation(fields: [organizationId], references: [id])
+  organizationId      String?
+  isDerived           Boolean              @default(false)
+  isIgredient         Boolean              @default(false)
+  Stock               Stock[]
+  recipeItems         Recipe[]             @relation("ProductRecipe") // se for prato
+  usedIn              Recipe[]             @relation("IngredientRecipe") // se for insumo
+  StockHistory        StockHistory[]
+  purchaseProducts    PurchaseProduct[]
+  SalePriceHistory    SalePriceHistory[]
+  PrecoVenda          PrecoVenda[]
+  Lote                Lote[]
+  economatoes         Economato[]
+  itemPedidoAreas     ItemPedidoArea[]
+  consumoInternos     ConsumoInterno[]
+  defaultAreaId       String? // Área padrão onde este produto é consumido
+  defaultArea         Area?                @relation(fields: [defaultAreaId], references: [id], name: "DefaultAreaProducts")
+  productAreaMappings ProductAreaMapping[]
+    @@unique([name, organizationId])
 
   @@map("products")
+}
+
+// Novo modelo para mapeamento de produtos por área
+model ProductAreaMapping {
+  id             String       @id @default(uuid())
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  areaId         String
+  area           Area         @relation(fields: [areaId], references: [id])
+  isDefault      Boolean      @default(false)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([productId, areaId, organizationId])
+  @@map("product_area_mapping")
 }
 
 //Modelo_receita
@@ -118,15 +139,19 @@ model Recipe {
 }
 
 model Area {
-  id              String           @id @default(uuid())
-  nome            String // "Cozinha", "Bar", "Sala", "Armazém", etc.
-  descricao       String?
-  organization    Organization?    @relation(fields: [organizationId], references: [id])
-  organizationId  String?
-  economato       Economato[]
-  consumoInternos ConsumoInterno[]
-  pedidosOrigem   PedidoArea[]     @relation("PedidosOrigem")
-  pedidosDestino  PedidoArea[]     @relation("PedidosDestino")
+  id                  String               @id @default(uuid())
+  nome                String // "Cozinha", "Bar", "Sala", "Armazém", etc.
+  descricao           String?
+  organization        Organization?        @relation(fields: [organizationId], references: [id])
+  organizationId      String?
+  economato           Economato[]
+  consumoInternos     ConsumoInterno[]
+  pedidosOrigem       PedidoArea[]         @relation("PedidosOrigem")
+  pedidosDestino      PedidoArea[]         @relation("PedidosDestino")
+  productsDefault     Product[]            @relation("DefaultAreaProducts")
+  productAreaMappings ProductAreaMapping[]
+  itemsOriginated     Item[]               @relation("ItemsFromArea")
+  stockHistories      StockHistory[]
 
   @@unique([nome, organizationId])
   @@map("areas")
@@ -331,13 +356,18 @@ model Session {
   Organization   Organization   @relation(fields: [organizationId], references: [id])
   organizationId String
   clientToken    String?
+  qrToken        String?  
+  tipoSessao     TipoSessao     @default(cliente)
   Order          Order[]
   OrderSession   OrderSession[]
   Fatura         Fatura?
 
   @@map("sessions")
 }
-
+enum TipoSessao {
+  cliente    // Cliente via QR Code
+  garcom     // Garçom autenticado
+}
 model Order {
   id             String         @id @default(uuid())
   sessionId      String?
@@ -367,8 +397,22 @@ model Item {
   productId      String
   Organization   Organization @relation(fields: [organizationId], references: [id])
   organizationId String
+  areaOriginId   String? // De qual área foi retirado
+  areaOrigin     Area?        @relation(fields: [areaOriginId], references: [id], name: "ItemsFromArea")
+  status         ItemStatus   @default(pendente) // pendente, em_preparacao, pronto, cancelado
+  canceled       Boolean      @default(false)
+  canceledAt     DateTime?
+  canceledReason String?
 
   @@map("items")
+}
+
+enum ItemStatus {
+  pendente
+  em_preparacao
+  pronto
+  cancelado
+  rejeitado
 }
 
 model Fatura {
@@ -430,6 +474,8 @@ model StockHistory {
   referenceType  StockReferenceType?
   Lote           Lote?               @relation(fields: [loteId], references: [id])
   loteId         String?
+  areaId         String? // Área relacionada à transação
+  area           Area?               @relation(fields: [areaId], references: [id])
 
   @@map("stock_history")
 }

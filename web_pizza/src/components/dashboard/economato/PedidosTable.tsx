@@ -104,9 +104,9 @@ export function PedidosTable() {
         
         // Filtra para mostrar ingrediente e não-derivados
         const filtered = stockResponse.data.filter((item: any) => 
-           item.product.isIgredient === true && item.product.isDerived === false
+           item.product.isIgredient === true || item.product.isDerived === false
         );
-        
+        console.log("Ver stock",stockResponse)
         setGeneralStock(filtered);
       } catch (error) {
         console.error("Erro ao carregar dados:", error);

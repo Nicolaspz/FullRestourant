@@ -11,12 +11,14 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Utensils, Image, X } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Loader2, Utensils, Image, X, Warehouse } from "lucide-react";
+import { useState, useEffect, useContext } from "react";
 import { Product, Category, ProductFormData } from "@/types/product";
 import { api } from "@/services/apiClients";
 import { toast } from 'react-toastify';
 import { DERIVED_CATEGORY_ID } from '../../../../config'
+import { Area, economatoService } from '@/services/economato';
+import { AuthContext } from '@/contexts/AuthContext';
 
 interface ProductFormModalProps {
   isOpen: boolean;
@@ -49,16 +51,59 @@ export function ProductFormModal({
     file: null,
     previewImage: '',
     price: 0,
-    existingBanner: ''
+    existingBanner: '',
+    defaultAreaId: '',
   });
+  
+  const { user } = useContext(AuthContext);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [areas, setAreas] = useState<Area[]>([]);
+  const [isLoadingAreas, setIsLoadingAreas] = useState(false);
+  const [isDataReady, setIsDataReady] = useState(false);
+
+  const fetchAreas = async () => {
+    if (!user?.organizationId) return;
+    try {
+      setIsLoadingAreas(true);
+      const data = await economatoService.getAreas(user.organizationId);
+      setAreas(data);
+      console.log("✅ Áreas carregadas:", {
+        quantidade: data.length,
+        áreas: data.map(a => ({ id: a.id, nome: a.nome }))
+      });
+    } catch (error) {
+      console.error("❌ Erro ao carregar áreas:", error);
+      toast.error("Erro ao carregar áreas");
+    } finally {
+      setIsLoadingAreas(false);
+    }
+  };
 
   useEffect(() => {
-    if (isOpen) {
+    const initializeForm = async () => {
+      if (!isOpen) return;
+      
+      console.log("🔄 Inicializando modal...");
+      console.log("   Mode:", mode);
+      console.log("   InitialData:", initialData);
+      
+      setIsDataReady(false);
+      await fetchAreas();
+      
       if (mode === 'edit' && initialData) {
-        console.log("Editando produto:", initialData);
-        console.log("Categoria do produto:", initialData.categoryId);
-        console.log("Banner do produto:", initialData.banner);
+        console.log("🎯 SETANDO FORM PARA EDIÇÃO");
+        console.log("   Dados do initialData:", {
+          name: initialData.name,
+          defaultAreaId: initialData.defaultAreaId,
+          defaultArea: initialData.defaultArea,
+          unit: initialData.unit,
+          categoryId: initialData.categoryId,
+          banner: initialData.banner
+        });
+        
+        // IMPORTANTE: Use initialData.defaultAreaId diretamente
+        // Se não tiver, tente pegar de defaultArea.id
+        const areaId = initialData.defaultAreaId || initialData.defaultArea?.id || '';
         
         setFormData({
           name: initialData.name || '',
@@ -66,14 +111,21 @@ export function ProductFormModal({
           unit: initialData.unit || 'un',
           isDerived: initialData.isDerived || false,
           isIgredient: initialData.isIgredient || false,
-          categoryId: initialData.categoryId || '',
+          categoryId: initialData.categoryId || initialData.Category?.id || '',
           file: null,
           previewImage: initialData.banner ? `${API_BASE_URL}/tmp/${initialData.banner}` : '',
           price: initialData.PrecoVenda?.[0]?.preco_venda || 0,
-          existingBanner: initialData.banner || ''
+          existingBanner: initialData.banner || '',
+          defaultAreaId: areaId // ← Usando o valor correto
+        });
+        
+        console.log("✅ FormData setado:", {
+          defaultAreaId: areaId,
+          name: initialData.name
         });
       } else {
         // Reset para create
+        console.log("🎯 SETANDO FORM PARA CRIAÇÃO");
         setFormData({
           name: '',
           description: '',
@@ -84,11 +136,36 @@ export function ProductFormModal({
           file: null,
           previewImage: '',
           price: 0,
-          existingBanner: ''
+          existingBanner: '',
+          defaultAreaId: '',
         });
       }
-    }
+      
+      setIsDataReady(true);
+    };
+
+    initializeForm();
   }, [isOpen, initialData, mode]);
+
+  // Log para debug quando áreas são carregadas
+  useEffect(() => {
+    if (areas.length > 0) {
+      console.log("🔍 VERIFICANDO ÁREAS E FORM DATA:");
+      console.log("   Áreas disponíveis:", areas.length);
+      console.log("   defaultAreaId no form:", formData.defaultAreaId);
+      console.log("   Área correspondente:", areas.find(a => a.id === formData.defaultAreaId));
+      
+      if (formData.defaultAreaId) {
+        const areaExists = areas.find(area => area.id === formData.defaultAreaId);
+        if (areaExists) {
+          console.log("✅ Área encontrada:", areaExists.nome);
+        } else {
+          console.warn("⚠️ Área não encontrada! ID:", formData.defaultAreaId);
+          console.log("   IDs disponíveis:", areas.map(a => a.id));
+        }
+      }
+    }
+  }, [areas, formData.defaultAreaId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,30 +207,42 @@ export function ProductFormModal({
       if (!formData.isDerived && formData.categoryId) {
         formPayload.append('categoryId', formData.categoryId);
       } else {
-        formPayload.append('categoryId', '663651cb-5bc8-4e1a-8fd6-46d32bac9e7a');
+        formPayload.append('categoryId', DERIVED_CATEGORY_ID);
+      }
+
+      // IMPORTANTE: SEMPRE envia defaultAreaId (mesmo que vazio) para produtos não derivados
+      if (!formData.isDerived) {
+        console.log("📤 Enviando defaultAreaId:", formData.defaultAreaId || "(vazio)");
+        // Envia como string vazia se não tiver valor
+        formPayload.append('defaultAreaId', formData.defaultAreaId || '');
+      } else {
+        console.log("📤 Produto derivado - não enviando defaultAreaId");
+        // Para produtos derivados, pode enviar vazio ou omitir
+        formPayload.append('defaultAreaId', '');
       }
       
       formPayload.append('organizationId', organizationId);
       
-      console.log("Dados do form:", {
-        ...formData,
-        previewImage: formData.previewImage ? 'URL presente' : 'Sem URL',
-        existingBanner: formData.existingBanner || 'Sem banner existente'
-      });
+      // DEBUG: Mostra todos os dados sendo enviados
+      console.log("📦 PAYLOAD COMPLETO:");
+      for (let [key, value] of formPayload.entries()) {
+        console.log(`  ${key}:`, value);
+      }
 
       // Apenas anexa o arquivo se um novo foi selecionado
       if (formData.file) {
         formPayload.append('file', formData.file);
         console.log("Novo arquivo anexado:", formData.file.name);
       } else if (mode === 'edit' && formData.existingBanner) {
-        // Para edição, se não há novo arquivo, mantém o banner existente
+        // Para edição, se não há novo arquivo, precisa enviar o banner existente
         console.log("Mantendo banner existente:", formData.existingBanner);
+        // Se o backend precisa saber que não há nova imagem
+        formPayload.append('existingBanner', formData.existingBanner);
       }
 
       if (mode === 'edit' && initialData) {
         // Editar produto existente
-        console.log("Editando produto ID:", initialData.id);
-        console.log("Payload para edição:", Object.fromEntries(formPayload));
+        console.log("✏️ Editando produto ID:", initialData.id);
         
         await api.put(`/produt?id=${initialData.id}`, formPayload, {
           headers: {
@@ -163,7 +252,7 @@ export function ProductFormModal({
         });
         toast.success('Produto atualizado com sucesso!');
       } else {
-        console.log("Criando novo produto");
+        console.log("🆕 Criando novo produto");
         if (!formData.file) {
           toast.error("Imagem do produto é obrigatória para novo produto");
           setIsSubmitting(false);
@@ -188,6 +277,8 @@ export function ProductFormModal({
       // Mensagens de erro mais específicas
       if (errorMessage.includes('file') || errorMessage.includes('imagem')) {
         toast.error('Erro ao processar a imagem. Tente novamente com outra imagem.');
+      } else if (errorMessage.includes('defaultAreaId')) {
+        toast.error('Erro ao processar a área padrão. Verifique se a área selecionada é válida.');
       } else {
         toast.error(errorMessage);
       }
@@ -197,6 +288,7 @@ export function ProductFormModal({
   };
 
   const handleInputChange = (field: string, value: any) => {
+    console.log(`✏️ Alterando ${field}:`, value);
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -231,7 +323,7 @@ export function ProductFormModal({
       ...prev,
       file: null,
       previewImage: '',
-      existingBanner: '' // Remove também o banner existente
+      existingBanner: ''
     }));
     
     // Reset do input file
@@ -248,6 +340,15 @@ export function ProductFormModal({
   };
 
   if (!isOpen) return null;
+
+  // Log de debug antes do render
+  console.log("🎯 RENDER FINAL - Estado:", {
+    defaultAreaId: formData.defaultAreaId,
+    hasDefaultAreaId: !!formData.defaultAreaId,
+    areasLoaded: areas.length,
+    areaFound: areas.find(a => a.id === formData.defaultAreaId),
+    isDataReady
+  });
 
   return (
     <div 
@@ -329,16 +430,23 @@ export function ProductFormModal({
               <Select 
                 value={formData.unit} 
                 onValueChange={(value) => handleInputChange('unit', value)}
+                disabled={!isDataReady || isSubmitting}
               >
                 <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                  <SelectValue />
+                  <SelectValue placeholder="Selecione a unidade">
+                    {formData.unit === 'un' && 'Unidade'}
+                    {formData.unit === 'kg' && 'Quilograma'}
+                    {formData.unit === 'g' && 'Grama'}
+                    {formData.unit === 'l' && 'Litro'}
+                    {formData.unit === 'ml' && 'Mililitro'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
-                  <SelectItem value="un" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">Unidade</SelectItem>
-                  <SelectItem value="kg" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">Quilograma</SelectItem>
-                  <SelectItem value="g" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">Grama</SelectItem>
-                  <SelectItem value="l" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">Litro</SelectItem>
-                  <SelectItem value="ml" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">Mililitro</SelectItem>
+                  <SelectItem value="un">Unidade</SelectItem>
+                  <SelectItem value="kg">Quilograma</SelectItem>
+                  <SelectItem value="g">Grama</SelectItem>
+                  <SelectItem value="l">Litro</SelectItem>
+                  <SelectItem value="ml">Mililitro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -350,11 +458,13 @@ export function ProductFormModal({
               <Select 
                 value={formData.categoryId} 
                 onValueChange={(value) => handleInputChange('categoryId', value)}
-                disabled={formData.isDerived}
+                disabled={formData.isDerived || !isDataReady || isSubmitting}
                 required={!formData.isDerived}
               >
                 <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                  <SelectValue placeholder="Selecione uma categoria" />
+                  <SelectValue placeholder="Selecione uma categoria">
+                    {formData.categoryId && categories.find(cat => cat.id === formData.categoryId)?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
                   {categories.map(category => (
@@ -371,16 +481,90 @@ export function ProductFormModal({
             </div>
           </div>
 
+          {/* Área Padrão - Apenas para produtos não derivados */}
+          {!formData.isDerived && (
+            <div className="space-y-2">
+              <Label htmlFor="defaultAreaId" className="flex items-center gap-2 text-gray-900 dark:text-white">
+                <Warehouse className="w-4 h-4" />
+                Área Padrão
+              </Label>
+              
+              {isLoadingAreas ? (
+                <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-md">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Carregando áreas...</span>
+                </div>
+              ) : (
+                <>
+                  <Select 
+                    value={formData.defaultAreaId} 
+                    onValueChange={(value) => {
+                      console.log("🔄 Área selecionada no select:", value);
+                      handleInputChange('defaultAreaId', value);
+                    }}
+                    disabled={!isDataReady || isSubmitting}
+                  >
+                    <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
+                      <SelectValue placeholder="Selecione uma área padrão">
+                        {formData.defaultAreaId ? (
+                          areas.find(area => area.id === formData.defaultAreaId)?.nome || 
+                          `ID: ${formData.defaultAreaId.substring(0, 8)}...`
+                        ) : (
+                          "Selecione uma área padrão"
+                        )}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
+                        {/* REMOVA ou ALTERE esta linha: */}
+                        {/* <SelectItem value="">Nenhuma área</SelectItem> */}
+                        
+                        {areas.map(area => (
+                          <SelectItem 
+                            key={area.id} 
+                            value={area.id}
+                            className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700"
+                          >
+                            {area.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                  </Select>
+                  
+                  {/* Info de debug (pode remover depois) */}
+                  {formData.defaultAreaId && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-800 rounded mt-2">
+                      <p>
+                        Área selecionada:{" "}
+                        <span className="font-medium">
+                          {areas.find(a => a.id === formData.defaultAreaId)?.nome || "Não encontrada"}
+                        </span>
+                      </p>
+                      <p className="text-xs opacity-75">
+                        ID: {formData.defaultAreaId}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Defina a área padrão onde este produto será armazenado
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center space-x-2">
             <Checkbox
               id="isDerived"
               checked={formData.isDerived}
               onCheckedChange={(checked) => {
                 const isDerived = !!checked;
+                console.log("✅ Produto derivado:", isDerived);
                 handleInputChange('isDerived', isDerived);
-                // Se marcar como derivado, limpa a categoria
+                // Se marcar como derivado, limpa a categoria e área
                 if (isDerived) {
                   handleInputChange('categoryId', '');
+                  handleInputChange('defaultAreaId', '');
                 }
               }}
               className="border-gray-300 dark:border-gray-600 data-[state=checked]:bg-blue-600 dark:data-[state=checked]:bg-blue-700"
@@ -403,6 +587,7 @@ export function ProductFormModal({
               accept="image/*"
               onChange={handleFileChange}
               className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white file:text-gray-900 dark:file:text-white file:bg-gray-100 dark:file:bg-gray-700"
+              disabled={isSubmitting}
             />
             <p className="text-sm text-gray-600 dark:text-gray-400">
               {mode === 'create' 
@@ -418,7 +603,6 @@ export function ProductFormModal({
                   alt="Preview" 
                   className="w-32 h-32 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
                   onError={(e) => {
-                    // Fallback se a imagem não carregar
                     console.error('Erro ao carregar imagem:', formData.existingBanner);
                     e.currentTarget.style.display = 'none';
                   }}
@@ -429,6 +613,7 @@ export function ProductFormModal({
                   size="sm"
                   className="absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full"
                   onClick={handleRemoveImage}
+                  disabled={isSubmitting}
                 >
                   <X className="h-3 w-3" />
                 </Button>

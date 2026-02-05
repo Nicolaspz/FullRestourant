@@ -49,7 +49,7 @@ export default function KitchenPage() {
   const [userLoading, setUserLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  const CATEGORY_FILTER = "Bebida";
+  const CATEGORY_FILTER = "Bebidas";
 
   // Função para buscar pedidos
   const fetchOrders = useCallback(async () => {

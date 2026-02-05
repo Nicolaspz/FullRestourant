@@ -63,7 +63,7 @@ export default function ProductMenu() {
   const { user } = useContext(AuthContext);
   const apiClient = setupAPIClient();
   const params = useParams();
-  const router = useRouter();
+  
   
   const organizationId = params.organizationId as string;
   const tableNumberFromUrl = params.tableNumber as string;
