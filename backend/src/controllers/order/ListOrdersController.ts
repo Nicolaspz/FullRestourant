@@ -5,7 +5,7 @@ import prismaClient from "../../prisma";
 class ListOrdersController{
 
   async handdle(req:Request, res:Response){
-    const {organizationId,categoryType }=req.query;
+    const {organizationId}=req.query;
     const listOrderCervice= new ListOrdersService();
     const ListOrders = await listOrderCervice.execute({
       organizationId:String(organizationId)
@@ -51,12 +51,15 @@ class ListOrdersController{
     }
   }
   async togglePrepared(req: Request, res: Response) {
-    const { itemId } = req.params;
+    const { itemId,OrganizationId } = req.params;
     const { prepared } = req.body;
   
     try {
       const item = await prismaClient.item.update({
-        where: { id: itemId },
+        where: { 
+          id: itemId,
+          organizationId:OrganizationId 
+        },
         data: {
           prepared,
         },

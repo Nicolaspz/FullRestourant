@@ -68,7 +68,7 @@ export default function IngredientsPage() {
   const [selectedIngredient, setSelectedIngredient] = useState<Ingredient | null>(null);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+ 
   // Buscar ingredientes e categorias
   const fetchData = async () => {
     try {
@@ -130,91 +130,170 @@ export default function IngredientsPage() {
 
   // Criar ingrediente - GARANTINDO QUE isIgredient SEMPRE SEJA true
   const handleCreateIngredient = async (ingredientData: any) => {
-    try {
-      setIsSubmitting(true);
-      
-      const formPayload = new FormData();
-      formPayload.append('name', ingredientData.name);
-      formPayload.append('description', ingredientData.description);
-      formPayload.append('unit', ingredientData.unit);
-      formPayload.append('categoryId', IGREDIENT_CATEGORY_ID);
-      formPayload.append('organizationId', user?.organizationId || '');      
-      formPayload.append('isDerived', JSON.stringify(false));    
-      formPayload.append('isIgredient', JSON.stringify(true)); 
-      formPayload.append('defaultAreaId', ingredientData.defaultAreaId);    
-      
-      if (ingredientData.file) {
-        formPayload.append('file', ingredientData.file);
+  try {
+    setIsSubmitting(true);
+    
+    const formPayload = new FormData();
+    formPayload.append('name', ingredientData.name);
+    formPayload.append('description', ingredientData.description);
+    formPayload.append('unit', ingredientData.unit);
+    formPayload.append('categoryId', IGREDIENT_CATEGORY_ID);
+    formPayload.append('organizationId', user?.organizationId || '');      
+    formPayload.append('isDerived', 'false');    
+    formPayload.append('isIgredient', 'true'); 
+    formPayload.append('defaultAreaId', ingredientData.defaultAreaId || '');
+    
+    // Verifica se há arquivo
+    
+    if (ingredientData.file) {
+      formPayload.append('file', ingredientData.file);
+      console.log('📸 Usando imagem fornecida');
+    } else {
+      // Usa imagem padrão de public/images
+      try {
+        // URL para a imagem em public/images
+        const defaultImageUrl = '/images/igrediente.png'; // ou .png, .svg
+        
+        const response = await fetch(defaultImageUrl);
+        if (!response.ok) {
+          throw new Error(`Falha ao carregar imagem: ${response.status}`);
+        }
+        
+        const blob = await response.blob();
+        const defaultFile = new File([blob], 'default-ingredient.jpg', { 
+          type: blob.type || 'image/jpeg',
+          lastModified: Date.now()
+        });
+        
+        formPayload.append('file', defaultFile);
+        console.log('🖼️ Usando imagem padrão de public/images');
+        
+      } catch (error) {
+        console.error('❌ Erro ao carregar imagem padrão:', error);
+        
+        // Fallback 1: Tenta imagem SVG como fallback
+        try {
+          const svgString = `<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100%" height="100%" fill="#f3f4f6"/>
+            <text x="50%" y="45%" text-anchor="middle" font-family="Arial" font-size="24" fill="#6b7280">🥘</text>
+            <text x="50%" y="60%" text-anchor="middle" font-family="Arial" font-size="18" fill="#6b7280">Ingrediente</text>
+          </svg>`;
+          
+          const blob = new Blob([svgString], { type: 'image/svg+xml' });
+          const defaultFile = new File([blob], 'default-ingredient.svg', { 
+            type: 'image/svg+xml',
+            lastModified: Date.now()
+          });
+          
+          formPayload.append('file', defaultFile);
+          console.log('🖼️ Usando imagem SVG de fallback');
+          
+        } catch (svgError) {
+          console.error('❌ Erro ao criar SVG de fallback:', svgError);
+          
+          // Fallback 2: Envia sem arquivo e deixa o backend tratar
+          console.log('⚠️ Enviando sem arquivo - backend usará padrão');
+        }
       }
-     
-      // CORREÇÃO: Mostrar os valores reais do FormData
-      console.log('📝 Criando ingrediente:');
-      const formDataObj: any = {};
-      for (let [key, value] of formPayload.entries()) {
-        formDataObj[key] = value;
+    }
+    
+    // Debug: Mostrar conteúdo do FormData
+    console.log('📝 Dados do FormData:');
+    for (let [key, value] of formPayload.entries()) {
+      if (value instanceof File) {
+        console.log(`${key}: File - ${value.name} (${value.size} bytes, ${value.type})`);
+      } else {
         console.log(`${key}:`, value);
       }
-      console.log("dados completos:", formDataObj);
-
-      await apiClient.post('/produts', formPayload, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${user?.token}`
-        }
-      });
-      
-      toast.success("Ingrediente criado com sucesso!");
-      fetchData();
-      setIsFormModalOpen(false);
-    } catch (error: any) {
-      console.error("Erro ao criar ingrediente:", error);
-      toast.error(error.response?.data?.message || "Erro ao criar ingrediente");
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+    
+
+    await apiClient.post('/produts', formPayload, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        Authorization: `Bearer ${user?.token}`
+      }
+    });
+    
+    toast.success("Ingrediente criado com sucesso!");
+    fetchData();
+    setIsFormModalOpen(false);
+  } catch (error: any) {
+    console.error("❌ Erro ao criar ingrediente:", error);
+    toast.error(error.response?.data?.message || "Erro ao criar ingrediente");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+// Função para edição - similar
+const handleEditIngredient = async (ingredientData: any) => {
+  if (!selectedIngredient) return;
+
+  try {
+    setIsSubmitting(true);
+    
+    const formPayload = new FormData();
+    formPayload.append('name', ingredientData.name);
+    formPayload.append('description', ingredientData.description);
+    formPayload.append('unit', ingredientData.unit);
+    formPayload.append('categoryId', IGREDIENT_CATEGORY_ID);
+    formPayload.append('organizationId', user?.organizationId || '');
+    formPayload.append('isDerived', 'false');    
+    formPayload.append('isIgredient', 'true'); 
+    formPayload.append('defaultAreaId', ingredientData.defaultAreaId || '');
+    
+    // Para edição: se não tem nova imagem, mantém a atual
+    if (ingredientData.file) {
+      formPayload.append('file', ingredientData.file);
+      console.log('📸 Usando nova imagem');
+    } else if (selectedIngredient.banner) {
+      // Mantém a imagem existente
+      console.log('💾 Mantendo imagem existente');
+      // Não adiciona 'file', o backend manterá a atual
+    } else {
+      // Se não tem imagem existente, usa padrão
+      try {
+        const defaultImageUrl = '/images/igrediente.png';
+        const response = await fetch(defaultImageUrl);
+        const blob = await response.blob();
+        const defaultFile = new File([blob], 'default-ingredient.jpg', { 
+          type: 'image/jpeg',
+          lastModified: Date.now()
+        });
+        formPayload.append('file', defaultFile);
+        console.log('🖼️ Usando imagem padrão para edição');
+      } catch (error) {
+        console.error('❌ Erro ao carregar imagem padrão:', error);
+      }
+    }
+
+    //console.log('✏️ Editando ingrediente...');
+    //console.log("idOrganization",user?.organizationId)
+    
+    await apiClient.put(`/produt?id=${selectedIngredient.id}`, formPayload, {
+      params: { 
+        organizationId: user?.organizationId
+      },
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        Authorization: `Bearer ${user?.token}`
+      }
+    });
+    
+    toast.success("Ingrediente atualizado com sucesso!");
+    fetchData();
+    setIsFormModalOpen(false);
+    setSelectedIngredient(null);
+  } catch (error: any) {
+    console.error("❌ Erro ao editar ingrediente:", error);
+    toast.error(error.response?.data?.error || error.response?.data?.message || "Erro ao editar ingrediente");
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   // Editar ingrediente - GARANTINDO QUE isIgredient SEMPRE SEJA true
-  const handleEditIngredient = async (ingredientData: any) => {
-    if (!selectedIngredient) return;
-
-    try {
-      setIsSubmitting(true);
-      
-      const formPayload = new FormData();
-      formPayload.append('name', ingredientData.name);
-      formPayload.append('description', ingredientData.description);
-      formPayload.append('unit', ingredientData.unit);
-      formPayload.append('categoryId', IGREDIENT_CATEGORY_ID);
-      formPayload.append('organizationId', user?.organizationId || '');
-      formPayload.append('isDerived', JSON.stringify(false));    
-      formPayload.append('isIgredient', JSON.stringify(true)); 
-      formPayload.append('defaultAreaId', ingredientData.defaultAreaId);
-      if (ingredientData.file) {
-        formPayload.append('file', ingredientData.file);
-      }
-
-      console.log('✏️ Editando ingrediente com isIgredient:', 'true'); // Log para debug
-      console.log("dados",formPayload);
-          
-      await apiClient.put(`/produt?id=${selectedIngredient.id}`, formPayload, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${user?.token}`
-        }
-      });
-      
-      toast.success("Ingrediente atualizado com sucesso!");
-      fetchData();
-      setIsFormModalOpen(false);
-      setSelectedIngredient(null);
-    } catch (error: any) {
-      console.error("Erro ao editar ingrediente:", error);
-      toast.error(error.response?.data?.error || error.response?.data?.message || "Erro ao editar ingrediente");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // Excluir ingrediente
   const handleDeleteIngredient = async () => {

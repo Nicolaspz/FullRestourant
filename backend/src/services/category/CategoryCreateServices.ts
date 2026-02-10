@@ -27,51 +27,54 @@ class CategoryCreateServices{
 
   }
 
-  async updateCategory(name:string, id:string){
-    // Verificar se o produto existe antes de tentar atualizá-lo
-    const existingProduct = await prismaClient.category.findUnique({
-      where: {
-        id: id,
-      },
-    });
-  
-    if (!existingProduct) {
-      throw new Error('Produto não encontrado');
-    }
-  
-    // Produto existe, proceder com a atualização
-   const category = await prismaClient.category.update({
-      where: {
-        id: id,
-      },
-      data: {
-        name: name,
-        
-      },
-    });
-    return category;
+  async updateCategory(name: string, id: string, id_organization: string) {
+  // Verificar se a categoria existe E pertence à organização
+  const existingCategory = await prismaClient.category.findUnique({
+    where: {
+      id: id,
+      organizationId: id_organization // Verifica ambas as condições
+    },
+  });
+
+  if (!existingCategory) {
+    throw new Error('Categoria não encontrada ou não pertence a esta organização');
   }
 
-  async DeleteCategory(id:string){
-    // Verificar se o produto existe antes de tentar atualizá-lo
-    const existingProduct = await prismaClient.category.findUnique({
-      where: {
-        id: id,
-      },
-    });
-  
-    if (!existingProduct) {
-      throw new Error('Produto não encontrado');
-    }
-  
-    // Produto existe, proceder com a atualização
-   const category = await prismaClient.category.delete({
-      where: {
-        id: id,
-      }});
-    return category;
+  // Categoria existe, proceder com a atualização
+  const category = await prismaClient.category.update({
+    where: {
+      id: id,
+      organizationId: id_organization // Garante que atualiza apenas se pertence à org
+    },
+    data: {
+      name: name,
+    },
+  });
+  return category;
+}
+
+async DeleteCategory(id: string, id_organization: string) {
+  // Verificar se a categoria existe E pertence à organização
+  const existingCategory = await prismaClient.category.findUnique({
+    where: {
+      id: id,
+      organizationId: id_organization // Verifica ambas as condições
+    },
+  });
+
+  if (!existingCategory) {
+    throw new Error('Categoria não encontrada ou não pertence a esta organização');
   }
 
+  // Categoria existe, proceder com a exclusão
+  const category = await prismaClient.category.delete({
+    where: {
+      id: id,
+      organizationId: id_organization // Garante que deleta apenas se pertence à org
+    }
+  });
+  return category;
+}
   
 }
 export {CategoryCreateServices};

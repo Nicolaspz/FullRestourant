@@ -31,6 +31,7 @@ import { OrderSendController } from "./controllers/order/OderSendController";
 import { getDashboardReport } from "./services/organization/dashboardService";
 import { DashboardController } from "./controllers/dashboard/controller";
 import { FaturaController } from "./controllers/fatura/faturaController";
+import { OrderManagementController } from "./controllers/order/OrderManagementController"; 
 //import { FaturaController } 
 
 const router = Router();
@@ -63,7 +64,7 @@ const controller = new RecipeController();
 const OrderSend = new OrderSendController();
 const DashboardContro = new DashboardController();
 const faturaController = new FaturaController();
-
+const controlManagementControllerler = new OrderManagementController();
 // Áreas
 import {
   CriarAreaController,
@@ -195,10 +196,10 @@ router.post('/order', isAuthenticated, orderController.handdle);
 router.post('/orders/with-stock', OrderSend.createWithStockUpdate);
 router.post('/token/verify', OrderSend.ChekVerify);
 router.get('/mesa_verify/:number', isAuthenticated, orderController.verify);
-router.delete('/order', deleteOrderController.handdle);
+router.delete('/order',isAuthenticated, deleteOrderController.handdle);
 router.post('/order/add', addListOrderController.handdle);
-router.delete('/order/remove', removeItemController.handdle);
-router.put('/order/send', isAuthenticated, sendOrderController.handdle);
+router.delete('/order/remove',isAuthenticated, removeItemController.handdle);
+router.put('/order/send', sendOrderController.handdle);
 router.get('/orders', isAuthenticated, listOrdersController.handdle);
 router.put('/items/:itemId/toggle-prepared', isAuthenticated, listOrdersController.togglePrepared);
 router.get('/sec_fact', isAuthenticated, listOrdersController.getFaturaSessionId);
@@ -206,6 +207,12 @@ router.get('/close_table/:number', isAuthenticated, listOrdersController.fecharM
 router.get('/ordersdat', isAuthenticated, listOrdersController.ListOrderByData);
 router.get('/order/details', isAuthenticated, detailOrderController.handdle);
 router.put('/order/finish', isAuthenticated, finishOrderController.handdle);
+//orderMagnagment
+router.delete('/orders/:orderId', controlManagementControllerler.deleteCompleteOrder.bind(controlManagementControllerler));
+router.delete('/orders/items/:itemId', controlManagementControllerler.deleteOrderItem.bind(controlManagementControllerler));
+router.put('/orders/items/:itemId/quantity', controlManagementControllerler.updateItemQuantity.bind(controlManagementControllerler));
+router.post('/orders/items/:itemId/restore', controlManagementControllerler.restoreCanceledItem.bind(controlManagementControllerler));
+router.get('/orders/:orderId/stock-history', controlManagementControllerler.getOrderStockHistory.bind(controlManagementControllerler));
 
 
 //Organização

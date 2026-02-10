@@ -10,12 +10,13 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Loader2, Warehouse, X } from "lucide-react";
+import { Image, Loader2, Warehouse, X } from "lucide-react";
 import { useState, useEffect, useContext } from "react";
 import { Category, Ingredient } from "@/types/product";
 import { API_BASE_URL } from "../../../../config";
 import { Area, economatoService } from "@/services/economato";
 import { AuthContext } from "@/contexts/AuthContext";
+import { toast } from "react-toastify";
 
 interface IngredientFormModalProps {
   isOpen: boolean;
@@ -47,7 +48,8 @@ export function IngredientFormModal({
     categoryId: '',
     file: null as File | null,
     previewImage: '',
-    defaultAreaId:''
+    defaultAreaId:'',
+    existingBanner: '',
   });
 const [areas, setAreas] = useState<Area[]>([]);
  const { user } = useContext(AuthContext);
@@ -88,6 +90,7 @@ const [areas, setAreas] = useState<Area[]>([]);
           categoryId: initialData.categoryId || '',
           isIgredient: true,
           file: null,
+          existingBanner: initialData.banner || '',
           defaultAreaId: initialData.defaultAreaId || '',
           previewImage: initialData.banner ? `${API_BASE_URL}/tmp/${initialData.banner}` : ''
         });
@@ -101,7 +104,8 @@ const [areas, setAreas] = useState<Area[]>([]);
           categoryId: '',
           file: null,
           previewImage: '',
-          defaultAreaId: ''
+          defaultAreaId: '',
+          existingBanner: '',
         });
       }
       
@@ -112,8 +116,12 @@ const [areas, setAreas] = useState<Area[]>([]);
   }, [isOpen, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
     
+    e.preventDefault();
+     if (!formData.defaultAreaId) {
+        toast.error("Área de Consumo é obrigatório!");
+        return;
+      }
     // Preparar dados para envio
     const submitData = {
       name: formData.name,
@@ -126,7 +134,7 @@ const [areas, setAreas] = useState<Area[]>([]);
       file: formData.file,
       defaultAreaId:formData.defaultAreaId
     };
-    console.log("dados",submitData)
+    //console.log("dados",submitData)
     onSubmit(submitData);
 
   };
@@ -187,159 +195,198 @@ const [areas, setAreas] = useState<Area[]>([]);
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">
-                  Nome *
-                </Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  placeholder="Digite o nome do ingrediente"
-                  required
-                  disabled={isSubmitting}
-                />
-              </div>
+<form onSubmit={handleSubmit} className="p-6 space-y-4">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="name" className="text-gray-900 dark:text-white">
+          Nome *
+        </Label>
+        <Input
+          id="name"
+          value={formData.name}
+          onChange={(e) => handleInputChange('name', e.target.value)}
+          placeholder="Digite o nome do ingrediente"
+          required
+          disabled={isSubmitting}
+          className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+        />
+      </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="description">
-                  Descrição
-                </Label>
-                <textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => handleInputChange('description', e.target.value)}
-                  placeholder="Digite a descrição do ingrediente"
-                  className="w-full px-3 py-2 border border-input rounded-md shadow-sm bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent min-h-[80px]"
-                  disabled={isSubmitting}
-                />
-              </div>
-               <div className="space-y-2">
-                <Label htmlFor="defaultAreaId" className="flex items-center gap-2">
-                  <Warehouse className="w-4 h-4" />
-                  Área Padrão
-                </Label>
-               
-                <Select 
-                  value={formData.defaultAreaId} 
-                  onValueChange={(value) => handleInputChange('defaultAreaId', value)}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma área padrão">
-                      {formData.defaultAreaId && areas.find(area => area.id === formData.defaultAreaId)?.nome}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {areas.map(area => (
-                      <SelectItem key={area.id} value={area.id}>
-                        {area.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      <div className="space-y-2">
+        <Label htmlFor="description" className="text-gray-900 dark:text-white">
+          Descrição
+        </Label>
+        <textarea
+          id="description"
+          value={formData.description}
+          onChange={(e) => handleInputChange('description', e.target.value)}
+          placeholder="Digite a descrição do ingrediente"
+          rows={4}
+          className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 rounded-md p-2 w-full resize-y"
+          disabled={isSubmitting}
+        />
+      </div>
+      
+      <div className="space-y-2">
+        <Label htmlFor="defaultAreaId" className="flex items-center gap-2 text-gray-900 dark:text-white">
+          <Warehouse className="w-4 h-4" />
+          Área Padrão de Consumo *
+        </Label>
+        
+        
+          <Select 
+  value={formData.defaultAreaId} 
+  onValueChange={(value) => {
+    handleInputChange('defaultAreaId', value);
+  }}
+  disabled={!isDataReady || isSubmitting}
+  required
+>
+  <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
+    <SelectValue placeholder="Selecione uma área padrão *">
+      {formData.defaultAreaId ? (
+        areas.find(area => area.id === formData.defaultAreaId)?.nome || 
+        `ID: ${formData.defaultAreaId.substring(0, 8)}...`
+      ) : (
+        "Selecione uma área padrão *"
+      )}
+    </SelectValue>
+  </SelectTrigger>
+  <SelectContent className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
+    {/* NÃO há opção para valor vazio/vazio */}
+    {areas.map(area => (
+      <SelectItem 
+        key={area.id} 
+        value={area.id}
+        className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700"
+      >
+        {area.nome}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+        
+        
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Defina a área padrão onde este ingrediente será consumido
+        </p>
+      </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="unit">Unidade *</Label>
-                
-                <Select 
-                  value={formData.unit} 
-                  onValueChange={(value: string) => handleInputChange('unit', value)}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a unidade">
-                      {formData.unit === 'un' && 'Unidade'}
-                      {formData.unit === 'kg' && 'Quilograma'}
-                      {formData.unit === 'g' && 'Grama'}
-                      {formData.unit === 'l' && 'Litro'}
-                      {formData.unit === 'ml' && 'Mililitro'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="un">Unidade</SelectItem>
-                    <SelectItem value="kg">Quilograma</SelectItem>
-                    <SelectItem value="g">Grama</SelectItem>
-                    <SelectItem value="l">Litro</SelectItem>
-                    <SelectItem value="ml">Mililitro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="image">
-                  Imagem
-                </Label>
-                <div className="flex items-center gap-4">
-                  <Label htmlFor="image" className="cursor-pointer">
-                    <div className="px-4 py-2 border border-input rounded-md text-sm font-medium hover:bg-accent transition-colors">
-                      Selecionar arquivo
-                    </div>
-                    <input
-                      type="file"
-                      id="image"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                      disabled={isSubmitting}
-                    />
-                  </Label>
-                  {formData.previewImage && (
-                    <div className="relative">
-                      <img 
-                        src={formData.previewImage} 
-                        alt="Preview" 
-                        className="w-16 h-16 object-cover rounded border"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleInputChange('previewImage', '')}
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
-                        disabled={isSubmitting}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="space-y-2">
+        <Label htmlFor="unit" className="text-gray-900 dark:text-white">
+          Unidade *
+        </Label>
+        <Select 
+          value={formData.unit} 
+          onValueChange={(value: string) => handleInputChange('unit', value)}
+          disabled={!isDataReady || isSubmitting}
+          required
+        >
+          <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
+            <SelectValue placeholder="Selecione a unidade">
+              {formData.unit === 'un' && 'Unidade'}
+              {formData.unit === 'kg' && 'Kilograma'}
+              {formData.unit === 'g' && 'Grama'}
+              {formData.unit === 'l' && 'Litro'}
+              {formData.unit === 'ml' && 'Mililitro'}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
+            <SelectItem value="un" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">
+              Unidade
+            </SelectItem>
+            <SelectItem value="kg" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">
+              Quilograma
+            </SelectItem>
+            <SelectItem value="g" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">
+              Grama
+            </SelectItem>
+            <SelectItem value="l" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">
+              Litro
+            </SelectItem>
+            <SelectItem value="ml" className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700">
+              Mililitro
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+    
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="image" className="flex items-center gap-2 text-gray-900 dark:text-white">
+          <Image className="w-4 h-4" />
+          Imagem do Ingrediente
+          {mode === 'create' && <span className="text-red-500">*</span>}
+        </Label>
+        
+        <div className="flex items-center gap-4">
+          <Input
+            id="image"
+            type="file"
+            accept="image/*"
+            onChange={handleFileChange}
+            className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white file:text-gray-900 dark:file:text-white file:bg-gray-100 dark:file:bg-gray-700 w-full"
+            disabled={isSubmitting}
+          />
           
-          {/* Footer */}
-          <div className="flex justify-end space-x-3 pt-4 border-t">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={onClose}
-              disabled={isSubmitting}
-            >
-              Cancelar
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={isSubmitting}
-              className="min-w-24"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {mode === 'create' ? 'Criando...' : 'Salvando...'}
-                </>
-              ) : (
-                mode === 'create' ? 'Criar Ingrediente' : 'Salvar Alterações'
-              )}
-            </Button>
-          </div>
-        </form>
+          {(formData.previewImage || formData.existingBanner) && (
+            <div className="relative">
+              <img 
+                src={formData.previewImage || (formData.existingBanner ? `${API_BASE_URL}/tmp/${formData.existingBanner}` : '')} 
+                alt="Preview" 
+                className="w-16 h-16 object-cover rounded border border-gray-300 dark:border-gray-600"
+                onError={(e) => {
+                  console.error('Erro ao carregar imagem:', formData.existingBanner);
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => handleInputChange('previewImage', '')}
+                className="absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full"
+                disabled={isSubmitting}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+        
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          {mode === 'create' 
+            ? 'Imagem obrigatória para novo ingrediente' 
+            : 'Selecione uma nova imagem apenas se deseja alterar'
+          }
+        </p>
+      </div>
+    </div>
+  </div>
+  
+  {/* Footer */}
+  <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+    <Button 
+      type="button" 
+      variant="outline" 
+      onClick={onClose}
+      disabled={isSubmitting}
+      className="border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+    >
+      Cancelar
+    </Button>
+    <Button 
+      type="submit" 
+      disabled={isSubmitting}
+      className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white"
+    >
+      {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+      {mode === 'create' ? 'Criar Ingrediente' : 'Salvar Alterações'}
+    </Button>
+  </div>
+</form>
       </div>
     </div>
   );

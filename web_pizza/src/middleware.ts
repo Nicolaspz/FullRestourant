@@ -17,8 +17,9 @@ const routePermissions: Record<string, UserRole[]> = {
   '/dashboard/products': ['Super Admin', 'Admin'],
   '/dashboard/settings': ['Super Admin', 'Admin'],
   '/dashboard/mesa': ['Super Admin', 'Admin'],
-  '/dashboard/users': ['Super Admin'],
+  '/dashboard/users': ['Super Admin','Admin'],
   '/dashboard/economato': ['Super Admin','Admin'],
+  
   // Rota geral DEPOIS
   '/dashboard': ['Super Admin', 'Admin'],
   '/cardapio': ['Super Admin', 'Admin'],

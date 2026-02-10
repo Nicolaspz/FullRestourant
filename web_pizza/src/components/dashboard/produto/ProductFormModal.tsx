@@ -98,7 +98,9 @@ export function ProductFormModal({
           defaultArea: initialData.defaultArea,
           unit: initialData.unit,
           categoryId: initialData.categoryId,
-          banner: initialData.banner
+          banner: initialData.banner,
+          
+          
         });
         
         // IMPORTANTE: Use initialData.defaultAreaId diretamente
@@ -147,145 +149,113 @@ export function ProductFormModal({
     initializeForm();
   }, [isOpen, initialData, mode]);
 
-  // Log para debug quando áreas são carregadas
-  useEffect(() => {
-    if (areas.length > 0) {
-      console.log("🔍 VERIFICANDO ÁREAS E FORM DATA:");
-      console.log("   Áreas disponíveis:", areas.length);
-      console.log("   defaultAreaId no form:", formData.defaultAreaId);
-      console.log("   Área correspondente:", areas.find(a => a.id === formData.defaultAreaId));
-      
-      if (formData.defaultAreaId) {
-        const areaExists = areas.find(area => area.id === formData.defaultAreaId);
-        if (areaExists) {
-          console.log("✅ Área encontrada:", areaExists.nome);
-        } else {
-          console.warn("⚠️ Área não encontrada! ID:", formData.defaultAreaId);
-          console.log("   IDs disponíveis:", areas.map(a => a.id));
-        }
-      }
-    }
-  }, [areas, formData.defaultAreaId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
+  
+  if (!userToken) {
+    toast.error("Token de autenticação não encontrado");
+    return;
+  }
+
+  if (!formData.name.trim()) {
+    toast.error("Nome do produto é obrigatório");
+    return;
+  }
+
+  if (!formData.categoryId && !formData.isDerived) {
+    toast.error("Categoria é obrigatória para produtos não derivados");
+    return;
+  }
+  if (!formData.defaultAreaId && !formData.isDerived) {
+    toast.error("Área de Consumo é obrigatório para produtos não derivados");
+    return;
+  }
+
+  try {
+    setIsSubmitting(true);
     
-    if (!userToken) {
-      toast.error("Token de autenticação não encontrado");
-      return;
+    const formPayload = new FormData();
+    
+    // Dados básicos do produto
+    formPayload.append('name', formData.name);
+    formPayload.append('description', formData.description || '');
+    formPayload.append('unit', formData.unit);
+    formPayload.append('isDerived', formData.isDerived.toString());
+    formPayload.append('isIgredient', formData.isIgredient.toString());
+    
+    // Só envia categoryId se não for produto derivado
+    if (!formData.isDerived && formData.categoryId) {
+      formPayload.append('categoryId', formData.categoryId);
+    } else {
+      formPayload.append('categoryId', DERIVED_CATEGORY_ID);
     }
 
-    if (!formData.name.trim()) {
-      toast.error("Nome do produto é obrigatório");
-      return;
+    if (formData.defaultAreaId && formData.defaultAreaId.trim() !== '') {
+      formPayload.append('defaultAreaId', formData.defaultAreaId);
+    }
+    
+    formPayload.append('organizationId', organizationId);
+    
+    // Apenas anexa o arquivo se um novo foi selecionado
+    // MODIFICAÇÃO: NÃO enviar existingBanner no FormData
+    if (formData.file) {
+      formPayload.append('file', formData.file);
+      console.log("📤 Enviando novo arquivo:", formData.file.name);
+    } else if (mode === 'edit' && formData.existingBanner) {
+      // Para edição sem nova imagem, enviar existingBanner como campo normal
+      // Mas NÃO como parte do FormData - vamos enviar como query param
+      console.log("💾 Mantendo banner existente:", formData.existingBanner);
+      // Vamos tratar isso no backend de outra forma
     }
 
-    if (!formData.price || formData.price <= 0) {
-      toast.error("Preço de venda deve ser maior que zero");
-      return;
+    // DEBUG
+    console.log("📦 PAYLOAD COMPLETO:");
+    for (let [key, value] of formPayload.entries()) {
+      console.log(`  ${key}:`, value instanceof File ? `File: ${value.name}` : value);
     }
 
-    if (!formData.categoryId && !formData.isDerived) {
-      toast.error("Categoria é obrigatória para produtos não derivados");
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
+    if (mode === 'edit' && initialData) {
+      // Para edição, vamos enviar existingBanner como query parameter
+      const url = `/produt?id=${initialData.id}&existingBanner=${encodeURIComponent(formData.existingBanner || '')}`;
       
-      const formPayload = new FormData();
-      
-      // Dados básicos do produto
-      formPayload.append('name', formData.name);
-      formPayload.append('price', formData.price.toString());
-      formPayload.append('description', formData.description || '');
-      formPayload.append('unit', formData.unit);
-      formPayload.append('isDerived', formData.isDerived.toString());
-      formPayload.append('isIgredient', formData.isIgredient.toString());
-      
-      // Só envia categoryId se não for produto derivado
-      if (!formData.isDerived && formData.categoryId) {
-        formPayload.append('categoryId', formData.categoryId);
-      } else {
-        formPayload.append('categoryId', DERIVED_CATEGORY_ID);
-      }
-
-      // IMPORTANTE: SEMPRE envia defaultAreaId (mesmo que vazio) para produtos não derivados
-      if (!formData.isDerived) {
-        console.log("📤 Enviando defaultAreaId:", formData.defaultAreaId || "(vazio)");
-        // Envia como string vazia se não tiver valor
-        formPayload.append('defaultAreaId', formData.defaultAreaId || '');
-      } else {
-        console.log("📤 Produto derivado - não enviando defaultAreaId");
-        // Para produtos derivados, pode enviar vazio ou omitir
-        formPayload.append('defaultAreaId', '');
-      }
-      
-      formPayload.append('organizationId', organizationId);
-      
-      // DEBUG: Mostra todos os dados sendo enviados
-      console.log("📦 PAYLOAD COMPLETO:");
-      for (let [key, value] of formPayload.entries()) {
-        console.log(`  ${key}:`, value);
-      }
-
-      // Apenas anexa o arquivo se um novo foi selecionado
-      if (formData.file) {
-        formPayload.append('file', formData.file);
-        console.log("Novo arquivo anexado:", formData.file.name);
-      } else if (mode === 'edit' && formData.existingBanner) {
-        // Para edição, se não há novo arquivo, precisa enviar o banner existente
-        console.log("Mantendo banner existente:", formData.existingBanner);
-        // Se o backend precisa saber que não há nova imagem
-        formPayload.append('existingBanner', formData.existingBanner);
-      }
-
-      if (mode === 'edit' && initialData) {
-        // Editar produto existente
-        console.log("✏️ Editando produto ID:", initialData.id);
-        
-        await api.put(`/produt?id=${initialData.id}`, formPayload, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            Authorization: `Bearer ${userToken}`
-          }
-        });
-        toast.success('Produto atualizado com sucesso!');
-      } else {
-        console.log("🆕 Criando novo produto");
-        if (!formData.file) {
-          toast.error("Imagem do produto é obrigatória para novo produto");
-          setIsSubmitting(false);
-          return;
+      await api.put(url, formPayload, {
+        params: { 
+        organizationId: user?.organizationId // Adiciona o organizationId do usuário
+      },
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${userToken}`
         }
-        await api.post('/produts', formPayload, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            Authorization: `Bearer ${userToken}`
-          }
-        });
-        toast.success('Produto cadastrado com sucesso!');
+      });
+      toast.success('Produto atualizado com sucesso!');
+    } else {
+      console.log("🆕 Criando novo produto");
+      if (!formData.file) {
+        toast.error("Imagem do produto é obrigatória para novo produto");
+        setIsSubmitting(false);
+        return;
       }
-
-      onSuccess();
-      onClose();
-      
-    } catch (error: any) {
-      console.error("Error saving product:", error);
-      const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Erro ao salvar produto';
-      
-      // Mensagens de erro mais específicas
-      if (errorMessage.includes('file') || errorMessage.includes('imagem')) {
-        toast.error('Erro ao processar a imagem. Tente novamente com outra imagem.');
-      } else if (errorMessage.includes('defaultAreaId')) {
-        toast.error('Erro ao processar a área padrão. Verifique se a área selecionada é válida.');
-      } else {
-        toast.error(errorMessage);
-      }
-    } finally {
-      setIsSubmitting(false);
+      await api.post('/produts', formPayload, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${userToken}`
+        }
+      });
+      toast.success('Produto cadastrado com sucesso!');
     }
-  };
+
+    onSuccess();
+    onClose();
+    
+  } catch (error: any) {
+    console.error("Error saving product:", error);
+    const errorMessage = error.response?.data?.message || error.response?.data?.error || 'Erro ao salvar produto';
+    toast.error(errorMessage);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   const handleInputChange = (field: string, value: any) => {
     console.log(`✏️ Alterando ${field}:`, value);
@@ -342,13 +312,13 @@ export function ProductFormModal({
   if (!isOpen) return null;
 
   // Log de debug antes do render
-  console.log("🎯 RENDER FINAL - Estado:", {
+  /*console.log("🎯 RENDER FINAL - Estado:", {
     defaultAreaId: formData.defaultAreaId,
     hasDefaultAreaId: !!formData.defaultAreaId,
     areasLoaded: areas.length,
     areaFound: areas.find(a => a.id === formData.defaultAreaId),
     isDataReady
-  });
+  });*/
 
   return (
     <div 
@@ -396,31 +366,17 @@ export function ProductFormModal({
                 className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
               />
             </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="price" className="text-gray-900 dark:text-white">Preço de Venda *</Label>
-              <Input
-                id="price"
-                type="number"
-                value={formData.price}
-                onChange={(e) => handleInputChange('price', Number(e.target.value))}
-                placeholder="0.00"
-                step="0.01"
-                min="0.01"
-                required
-                className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-              />
-            </div>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="description" className="text-gray-900 dark:text-white">Descrição</Label>
-            <Input
+            <textarea
               id="description"
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Descrição do produto"
-              className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+              rows={4} // ou o número de linhas que preferir
+              className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 rounded-md p-2 w-full resize-y"
             />
           </div>
 
@@ -435,7 +391,7 @@ export function ProductFormModal({
                 <SelectTrigger className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
                   <SelectValue placeholder="Selecione a unidade">
                     {formData.unit === 'un' && 'Unidade'}
-                    {formData.unit === 'kg' && 'Quilograma'}
+                    {formData.unit === 'kg' && 'kilograma'}
                     {formData.unit === 'g' && 'Grama'}
                     {formData.unit === 'l' && 'Litro'}
                     {formData.unit === 'ml' && 'Mililitro'}
@@ -443,7 +399,7 @@ export function ProductFormModal({
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600">
                   <SelectItem value="un">Unidade</SelectItem>
-                  <SelectItem value="kg">Quilograma</SelectItem>
+                  <SelectItem value="kg">Kilograma</SelectItem>
                   <SelectItem value="g">Grama</SelectItem>
                   <SelectItem value="l">Litro</SelectItem>
                   <SelectItem value="ml">Mililitro</SelectItem>
@@ -499,7 +455,7 @@ export function ProductFormModal({
                   <Select 
                     value={formData.defaultAreaId} 
                     onValueChange={(value) => {
-                      console.log("🔄 Área selecionada no select:", value);
+                      //console.log("🔄 Área selecionada no select:", value);
                       handleInputChange('defaultAreaId', value);
                     }}
                     disabled={!isDataReady || isSubmitting}
@@ -530,20 +486,6 @@ export function ProductFormModal({
                       </SelectContent>
                   </Select>
                   
-                  {/* Info de debug (pode remover depois) */}
-                  {formData.defaultAreaId && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 p-2 bg-gray-50 dark:bg-gray-800 rounded mt-2">
-                      <p>
-                        Área selecionada:{" "}
-                        <span className="font-medium">
-                          {areas.find(a => a.id === formData.defaultAreaId)?.nome || "Não encontrada"}
-                        </span>
-                      </p>
-                      <p className="text-xs opacity-75">
-                        ID: {formData.defaultAreaId}
-                      </p>
-                    </div>
-                  )}
                 </>
               )}
               

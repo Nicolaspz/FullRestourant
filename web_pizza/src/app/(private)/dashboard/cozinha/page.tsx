@@ -111,7 +111,7 @@ export default function KitchenPage() {
   const togglePrepared = async (itemId: string, prepared: boolean) => {
     try {
       await apiClient.put(
-        `/items/${itemId}/toggle-prepared`,
+        `/items/${itemId}/toggle-prepared?organizationId=${user?.organizationId}`,
         { prepared },
         {
           headers: { Authorization: `Bearer ${user?.token}` },

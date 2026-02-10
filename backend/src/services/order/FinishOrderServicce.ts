@@ -1,15 +1,17 @@
 import prismaClient from "../../prisma";
 
 interface RequestParam{
-  order_id:string
+  order_id:string;
+  organizationId
 }
 class FinishOrderService{
-  async execute({ order_id }: RequestParam) {
+  async execute({ order_id,organizationId }: RequestParam) {
     // 1. Verificar se ainda existem itens não preparados
     const unpreparedItems = await prismaClient.item.findMany({
       where: {
         orderId: order_id,
         prepared: false,
+        organizationId
       },
     });
   
@@ -22,6 +24,7 @@ class FinishOrderService{
     const order = await prismaClient.order.update({
       where: {
         id: order_id,
+        organizationId,
       },
       data: {
         status: true,
@@ -30,6 +33,7 @@ class FinishOrderService{
   
     return order;
   }
+  
   
 
 }

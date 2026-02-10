@@ -79,7 +79,7 @@ model Product {
   id                  String               @id @default(uuid())
   name                String
   description         String
-  banner              String
+  banner              String?
   unit                String
   is_fractional       Boolean              @default(false)
   created_at          DateTime?            @default(now())
@@ -476,7 +476,7 @@ model StockHistory {
   loteId         String?
   areaId         String? // Área relacionada à transação
   area           Area?               @relation(fields: [areaId], references: [id])
-
+  
   @@map("stock_history")
 }
 

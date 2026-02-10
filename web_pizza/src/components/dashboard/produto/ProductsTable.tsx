@@ -173,29 +173,34 @@ const closePriceModal = () => {
 
   // Excluir produto
   const handleDeleteProduct = async () => {
-    if (!selectedProduct) return;
+  if (!selectedProduct) return;
 
-    try {
-      setIsSubmitting(true);
-      await api.delete('/produt', {
-        params: { productId: selectedProduct.id },
-        headers: { Authorization: `Bearer ${token}` }
-      });
+  try {
+    setIsSubmitting(true);
+    console.log("id organization", user?.organizationId)
+    // IMPORTANTE: Agora precisa passar organizationId também
+    await api.delete('/produt', {
+      params: { 
+        productId: selectedProduct.id,
+        organizationId: user?.organizationId // Adiciona o organizationId do usuário
+      },
+      headers: { Authorization: `Bearer ${token}` }
+    });
 
-      // Atualizar a lista localmente
-      setProducts(prev => prev.filter(p => p.id !== selectedProduct.id));
-      toast.success("Produto excluído com sucesso!");
-      
-    } catch (error: any) {
-      console.error("Erro ao excluir produto:", error);
-      toast.error(error.response?.data?.message || "Erro ao excluir produto");
-    } finally {
-      // SEMPRE resetar o estado, mesmo em caso de erro
-      setIsSubmitting(false);
-      setIsDeleteDialogOpen(false);
-      setSelectedProduct(null);
-    }
-  };
+    // Atualizar a lista localmente
+    setProducts(prev => prev.filter(p => p.id !== selectedProduct.id));
+    toast.success("Produto excluído com sucesso!");
+    
+  } catch (error: any) {
+    console.error("Erro ao excluir produto:", error);
+    toast.error(error.response?.data?.message || "Erro ao excluir produto");
+  } finally {
+    // SEMPRE resetar o estado, mesmo em caso de erro
+    setIsSubmitting(false);
+    setIsDeleteDialogOpen(false);
+    setSelectedProduct(null);
+  }
+};
 
   // Aceitar preço sugerido
   const handleAcceptSuggestedPrice = async (productId: string) => {
