@@ -1,21 +1,31 @@
 import { Request, Response } from "express";
 import { OrderServices } from "../../services/order/OrderServices";
+import { getIO } from "../../socket_io";
 
 
-class OrderController{
-  async handdle(req:Request, res:Response){
-    const {number,name,organizationId} = req.body;
-    const ServiceOrder= new OrderServices();
-    const Order= await ServiceOrder.execute({number,name,organizationId});
+class OrderController {
+  async handdle(req: Request, res: Response) {
+    const { number, name, organizationId } = req.body;
+    const ServiceOrder = new OrderServices();
+    const Order = await ServiceOrder.execute({ number, name, organizationId });
+
+    // Emitir evento de novo pedido
+    try {
+      const io = getIO();
+      io.emit('orders_refresh', { organizationId });
+    } catch (error) {
+      console.error("Erro ao emitir evento de socket:", error);
+    }
+
     return res.json(Order);
   }
 
- 
+
   async verify(request: Request, response: Response) {
-    const ServiceOrder= new OrderServices();
+    const ServiceOrder = new OrderServices();
     try {
-     const {number} = request.params;
-      const {organizationId} = request.body; // Assumindo autenticação JWT
+      const { number } = request.params;
+      const { organizationId } = request.body; // Assumindo autenticação JWT
 
       // Validação básica
       if (!number || isNaN(Number(number))) {
@@ -36,21 +46,21 @@ class OrderController{
 
     } catch (error) {
       console.error('Error verifying table:', error);
-      
+
       if (error.message === 'Mesa não encontrada.') {
-        return response.status(404).json({ 
+        return response.status(404).json({
           success: false,
-          error: error.message 
+          error: error.message
         });
       }
 
-      return response.status(500).json({ 
+      return response.status(500).json({
         success: false,
-        error: 'Erro interno no servidor' 
+        error: 'Erro interno no servidor'
       });
     }
   }
 
 
 }
-export {OrderController}
+export { OrderController }

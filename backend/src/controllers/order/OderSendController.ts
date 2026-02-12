@@ -1,16 +1,17 @@
 import { Request, Response } from 'express';
 import { OrderServices } from '../../services/order/OderSendServices';
 import prismaClient from '../../prisma';
+import { getIO } from '../../socket_io';
 
 class OrderSendController {
   async createWithStockUpdate(request: Request, response: Response) {
     try {
-      const { 
-        tableNumber, 
-        items, 
-        customerName, 
-        organizationId, 
-        clientToken 
+      const {
+        tableNumber,
+        items,
+        customerName,
+        organizationId,
+        clientToken
       } = request.body;
 
       console.log('📦 Recebendo pedido:', {
@@ -63,10 +64,10 @@ class OrderSendController {
       }
 
       // Validar cada item
-      const invalidItems = items.filter(item => 
-        !item.productId || 
-        !item.amount || 
-        typeof item.amount !== 'number' || 
+      const invalidItems = items.filter(item =>
+        !item.productId ||
+        !item.amount ||
+        typeof item.amount !== 'number' ||
         item.amount <= 0
       );
 
@@ -88,12 +89,12 @@ class OrderSendController {
       }
 
       const orderServices = new OrderServices();
-      
+
       const result = await orderServices.createCompleteOrderWithStockUpdate({
         tableNumber: Number(tableNumber),
         organizationId,
         items,
-        customerName: customerName || 
+        customerName: customerName ||
           (tableNumber === 0 ? 'Pedido Takeaway' : `Pedido Mesa ${tableNumber}`),
         clientToken
       });
@@ -103,6 +104,13 @@ class OrderSendController {
         sessionId: result.sessionId,
         mesaId: result.mesaId
       });
+
+      try {
+        const io = getIO();
+        io.emit('orders_refresh', { organizationId });
+      } catch (error) {
+        console.error("Erro ao emitir evento de socket:", error);
+      }
 
       return response.json({
         success: true,
@@ -133,7 +141,7 @@ class OrderSendController {
           suggestion: 'Use o token fornecido para se juntar à sessão existente'
         });
       }
-      
+
       // Tratamento para estoque insuficiente
       if (error.message?.includes('Estoque insuficiente') || error.code === 'INSUFFICIENT_STOCK') {
         return response.status(400).json({
@@ -143,7 +151,7 @@ class OrderSendController {
           suggestion: 'Verifique a disponibilidade dos produtos'
         });
       }
-      
+
       // Tratamento para produtos não encontrados
       if (error.message?.includes('Produtos não encontrados') || error.code === 'PRODUCTS_NOT_FOUND') {
         return response.status(404).json({
@@ -207,144 +215,144 @@ class OrderSendController {
 
 
   async ChekVerify(request: Request, response: Response) {
-  try {
-    const { 
-      tableNumber, 
-      organizationId, 
-      clientToken 
-    } = request.body;
+    try {
+      const {
+        tableNumber,
+        organizationId,
+        clientToken
+      } = request.body;
 
-    console.log('📦 Verificando token:', {
-      tableNumber,
-      organizationId,
-      hasClientToken: !!clientToken
-    });
-
-    // Validação dos dados
-    if (!tableNumber && tableNumber !== 0) {
-      return response.status(400).json({
-        success: false,
-        error: 'Número da mesa é obrigatório',
-        code: 'MISSING_TABLE_NUMBER'
+      console.log('📦 Verificando token:', {
+        tableNumber,
+        organizationId,
+        hasClientToken: !!clientToken
       });
-    }
 
-    if (tableNumber < 0) {
-      return response.status(400).json({
-        success: false,
-        error: 'Número da mesa inválido',
-        code: 'INVALID_TABLE_NUMBER'
+      // Validação dos dados
+      if (!tableNumber && tableNumber !== 0) {
+        return response.status(400).json({
+          success: false,
+          error: 'Número da mesa é obrigatório',
+          code: 'MISSING_TABLE_NUMBER'
+        });
+      }
+
+      if (tableNumber < 0) {
+        return response.status(400).json({
+          success: false,
+          error: 'Número da mesa inválido',
+          code: 'INVALID_TABLE_NUMBER'
+        });
+      }
+
+      if (!organizationId) {
+        return response.status(400).json({
+          success: false,
+          error: 'Organization ID é obrigatório',
+          code: 'MISSING_ORGANIZATION_ID'
+        });
+      }
+
+      if (!clientToken || typeof clientToken !== 'string') {
+        return response.status(400).json({
+          success: false,
+          error: 'Token do cliente é obrigatório',
+          code: 'MISSING_CLIENT_TOKEN'
+        });
+      }
+
+      const orderServices = new OrderServices();
+
+      const result = await orderServices.veryfiToken({
+        tableNumber: Number(tableNumber),
+        organizationId,
+        clientToken
       });
-    }
 
-    if (!organizationId) {
-      return response.status(400).json({
-        success: false,
-        error: 'Organization ID é obrigatório',
-        code: 'MISSING_ORGANIZATION_ID'
+      return response.json({
+        success: true,
+        sessionId: result.sessionId,
+        mesaId: result.mesaId,
+        clientToken: result.clientToken,
+        message: 'Sessão verificada/criada com sucesso'
       });
-    }
 
-    if (!clientToken || typeof clientToken !== 'string') {
-      return response.status(400).json({
-        success: false,
-        error: 'Token do cliente é obrigatório',
-        code: 'MISSING_CLIENT_TOKEN'
-      });
-    }
-
-    const orderServices = new OrderServices();
-    
-    const result = await orderServices.veryfiToken({
-      tableNumber: Number(tableNumber),
-      organizationId,
-      clientToken
-    });
-    
-    return response.json({
-      success: true,
-      sessionId: result.sessionId,
-      mesaId: result.mesaId,
-      clientToken: result.clientToken,
-      message: 'Sessão verificada/criada com sucesso'
-    });
-
-  } catch (error: any) {
-    console.error('❌ Erro ao verificar token:', {
-      message: error.message,
-      name: error.name,
-      code: error.code,
-      existingClientToken: error.existingClientToken,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-
-    // Tratamento específico para conflito de sessão
-    if (error.name === 'SessionConflictError' || error.code === 'SESSION_CONFLICT') {
-      return response.status(409).json({
-        success: false,
-        error: error.message || 'Esta mesa já está ocupada por outro cliente',
+    } catch (error: any) {
+      console.error('❌ Erro ao verificar token:', {
+        message: error.message,
+        name: error.name,
+        code: error.code,
         existingClientToken: error.existingClientToken,
-        sessionId: error.sessionId,
-        mesaId: error.mesaId,
-        code: 'SESSION_CONFLICT',
-        suggestion: 'Use o token fornecido para se juntar à sessão existente'
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       });
-    }
-    
-    // Tratamento para mesa não encontrada
-    if (error.message?.includes('Mesa') && error.message?.includes('não encontrada')) {
-      return response.status(404).json({
-        success: false,
-        error: error.message,
-        code: 'TABLE_NOT_FOUND',
-        suggestion: 'Verifique o número da mesa'
-      });
-    }
 
-    // Tratamento básico de erros de validação
-    if (
-      error.message?.includes('Número da mesa inválido') ||
-      error.message?.includes('Organization ID é obrigatório') ||
-      error.message?.includes('Token do cliente é obrigatório')
-    ) {
+      // Tratamento específico para conflito de sessão
+      if (error.name === 'SessionConflictError' || error.code === 'SESSION_CONFLICT') {
+        return response.status(409).json({
+          success: false,
+          error: error.message || 'Esta mesa já está ocupada por outro cliente',
+          existingClientToken: error.existingClientToken,
+          sessionId: error.sessionId,
+          mesaId: error.mesaId,
+          code: 'SESSION_CONFLICT',
+          suggestion: 'Use o token fornecido para se juntar à sessão existente'
+        });
+      }
+
+      // Tratamento para mesa não encontrada
+      if (error.message?.includes('Mesa') && error.message?.includes('não encontrada')) {
+        return response.status(404).json({
+          success: false,
+          error: error.message,
+          code: 'TABLE_NOT_FOUND',
+          suggestion: 'Verifique o número da mesa'
+        });
+      }
+
+      // Tratamento básico de erros de validação
+      if (
+        error.message?.includes('Número da mesa inválido') ||
+        error.message?.includes('Organization ID é obrigatório') ||
+        error.message?.includes('Token do cliente é obrigatório')
+      ) {
+        return response.status(400).json({
+          success: false,
+          error: error.message,
+          code: 'VALIDATION_ERROR'
+        });
+      }
+
+      // Tratamento para timeout da transação
+      if (error.code === 'P2028' || error.message?.includes('timeout')) {
+        return response.status(408).json({
+          success: false,
+          error: 'Tempo esgotado ao processar a verificação',
+          code: 'TRANSACTION_TIMEOUT',
+          suggestion: 'Tente novamente em alguns instantes'
+        });
+      }
+
+      // Erro geral do Prisma
+      if (error.code?.startsWith('P')) {
+        return response.status(500).json({
+          success: false,
+          error: 'Erro de banco de dados',
+          code: 'DATABASE_ERROR',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Erro geral
       return response.status(400).json({
         success: false,
-        error: error.message,
-        code: 'VALIDATION_ERROR'
-      });
-    }
-
-    // Tratamento para timeout da transação
-    if (error.code === 'P2028' || error.message?.includes('timeout')) {
-      return response.status(408).json({
-        success: false,
-        error: 'Tempo esgotado ao processar a verificação',
-        code: 'TRANSACTION_TIMEOUT',
-        suggestion: 'Tente novamente em alguns instantes'
-      });
-    }
-
-    // Erro geral do Prisma
-    if (error.code?.startsWith('P')) {
-      return response.status(500).json({
-        success: false,
-        error: 'Erro de banco de dados',
-        code: 'DATABASE_ERROR',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        error: error.message || 'Erro ao verificar token',
+        code: 'GENERAL_ERROR',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
         timestamp: new Date().toISOString()
       });
     }
-
-    // Erro geral
-    return response.status(400).json({
-      success: false,
-      error: error.message || 'Erro ao verificar token',
-      code: 'GENERAL_ERROR',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      timestamp: new Date().toISOString()
-    });
   }
-}
   // Método adicional para verificar sessão ativa
   async checkActiveSession(request: Request, response: Response) {
     try {
@@ -358,7 +366,7 @@ class OrderSendController {
       }
 
       const orderServices = new OrderServices();
-      
+
       // Buscar mesa
       const mesa = await prismaClient.mesa.findFirst({
         where: {
@@ -414,7 +422,7 @@ class OrderSendController {
     }
   }
 
- 
+
 }
 
 export { OrderSendController };

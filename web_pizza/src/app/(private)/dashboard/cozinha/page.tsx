@@ -1,7 +1,7 @@
 'use client'
 import React, { useEffect, useState, useContext } from "react";
-import { setupAPIClient } from "@/services/api"; 
-import { AuthContext } from "@/contexts/AuthContext"; 
+import { setupAPIClient } from "@/services/api";
+import { AuthContext } from "@/contexts/AuthContext";
 import { toast } from "react-toastify";
 import { FaEye, FaCheck, FaCheckCircle, FaRegCircle } from "react-icons/fa";
 import Head from "next/head";
@@ -9,11 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSocket } from "@/contexts/SocketContext";
 
 interface OrderItem {
   id: string;
   amount: number;
   prepared: boolean;
+  canceled?: boolean;
   Product: {
     id: string;
     name: string;
@@ -58,18 +60,17 @@ export default function KitchenPage() {
         params: { organizationId: user.organizationId },
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      
+
       const allOrders: Order[] = response.data;
 
-      console.log("pedidos",allOrders)
+      console.log("pedidos", allOrders)
       // Filtro local por categoria
       const filtered = allOrders
         .map((order) => {
           const filteredItems = order.items.filter(
-            (item) => item.Product?.Category?.name === CATEGORY_FILTER
-            
+            (item) => item.Product?.Category?.name === CATEGORY_FILTER && !item.canceled
           );
-          
+
           return filteredItems.length > 0
             ? { ...order, items: filteredItems }
             : null;
@@ -133,15 +134,15 @@ export default function KitchenPage() {
     const date = new Date(dateString);
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
+
     if (diffInMinutes < 1) return "Agora mesmo";
     if (diffInMinutes === 1) return "1 min atrás";
     if (diffInMinutes < 60) return `${diffInMinutes} min atrás`;
-    
+
     const diffInHours = Math.floor(diffInMinutes / 60);
     if (diffInHours === 1) return "1 hora atrás";
     if (diffInHours < 24) return `${diffInHours} horas atrás`;
-    
+
     const diffInDays = Math.floor(diffInHours / 24);
     return `${diffInDays} dias atrás`;
   };
@@ -152,6 +153,26 @@ export default function KitchenPage() {
       setUserLoading(false);
     }
   }, [user]);
+
+  // Listener do Socket IO
+  const { socket } = useSocket();
+
+  useEffect(() => {
+    if (socket && user?.organizationId) {
+      const handleRefresh = (data: any) => {
+        if (data.organizationId === user.organizationId) {
+          console.log("Recebido evento de atualização na Cozinha");
+          fetchOrders();
+        }
+      };
+
+      socket.on('orders_refresh', handleRefresh);
+
+      return () => {
+        socket.off('orders_refresh', handleRefresh);
+      };
+    }
+  }, [socket, user]);
 
   // Busca pedidos quando o usuário estiver disponível
   useEffect(() => {
@@ -216,13 +237,12 @@ export default function KitchenPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredOrders.map((order) => (
-                <Card 
-                  key={order.id} 
-                  className={`transition-all duration-200 ${
-                    isAllPrepared(order) 
-                      ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20" 
-                      : "border-border"
-                  }`}
+                <Card
+                  key={order.id}
+                  className={`transition-all duration-200 ${isAllPrepared(order)
+                    ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20"
+                    : "border-border"
+                    }`}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start">
@@ -256,11 +276,10 @@ export default function KitchenPage() {
                       {order.items.slice(0, expandedOrderId === order.id ? undefined : 2).map((item) => (
                         <div
                           key={item.id}
-                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${
-                            item.prepared 
-                              ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800" 
-                              : "bg-muted/50"
-                          }`}
+                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${item.prepared
+                            ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+                            : "bg-muted/50"
+                            }`}
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
@@ -271,11 +290,10 @@ export default function KitchenPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => togglePrepared(item.id, !item.prepared)}
-                            className={`h-8 w-8 flex-shrink-0 ${
-                              item.prepared 
-                                ? "text-green-600 hover:text-green-700" 
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
+                            className={`h-8 w-8 flex-shrink-0 ${item.prepared
+                              ? "text-green-600 hover:text-green-700"
+                              : "text-muted-foreground hover:text-foreground"
+                              }`}
                           >
                             {item.prepared ? (
                               <FaCheckCircle className="h-4 w-4" />

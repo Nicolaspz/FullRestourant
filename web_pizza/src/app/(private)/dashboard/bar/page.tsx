@@ -1,19 +1,21 @@
 'use client'
-import React, { useEffect, useState, useContext, useCallback } from "react";
-import { setupAPIClient } from "../../../../services/api";
-import { AuthContext } from "../../../../contexts/AuthContext";
+import React, { useEffect, useState, useContext } from "react";
+import { setupAPIClient } from "@/services/api";
+import { AuthContext } from "@/contexts/AuthContext";
 import { toast } from "react-toastify";
-import { FaEye, FaCheck, FaCheckCircle, FaRegCircle, FaSync } from "react-icons/fa";
+import { FaEye, FaCheck, FaCheckCircle, FaRegCircle } from "react-icons/fa";
 import Head from "next/head";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSocket } from "@/contexts/SocketContext";
 
 interface OrderItem {
   id: string;
   amount: number;
   prepared: boolean;
+  canceled?: boolean;
   Product: {
     id: string;
     name: string;
@@ -39,7 +41,7 @@ interface Order {
   items: OrderItem[];
 }
 
-export default function KitchenPage() {
+export default function BarPage() {
   const { user } = useContext(AuthContext);
   const apiClient = setupAPIClient();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -47,34 +49,28 @@ export default function KitchenPage() {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userLoading, setUserLoading] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
   const CATEGORY_FILTER = "Bebidas";
 
-  // Função para buscar pedidos
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = async () => {
     if (!user?.organizationId || !user?.token) return;
-    
+    setLoading(true);
     try {
       const response = await apiClient.get("/orders", {
-        params: { 
-          organizationId: user.organizationId,
-          _t: new Date().getTime() // Evitar cache
-        },
+        params: { organizationId: user.organizationId },
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      
+
       const allOrders: Order[] = response.data;
 
-      console.log("pedidos atualizados", allOrders);
-      
+      console.log("pedidos", allOrders)
       // Filtro local por categoria
       const filtered = allOrders
         .map((order) => {
           const filteredItems = order.items.filter(
-            (item) => item.Product?.Category?.name === CATEGORY_FILTER
+            (item) => item.Product?.Category?.name === CATEGORY_FILTER && !item.canceled
           );
-          
+
           return filteredItems.length > 0
             ? { ...order, items: filteredItems }
             : null;
@@ -83,32 +79,13 @@ export default function KitchenPage() {
 
       setOrders(allOrders);
       setFilteredOrders(filtered);
-      setLastUpdate(new Date());
     } catch (error) {
+      toast.error("Erro ao buscar pedidos");
       console.error("Erro ao buscar pedidos:", error);
-      // Não mostrar toast para evitar spam em atualizações automáticas
     } finally {
       setLoading(false);
     }
-  }, [user, apiClient]);
-
-  // Polling automático a cada 10 segundos
-  useEffect(() => {
-    if (!user?.organizationId) return;
-
-    const interval = setInterval(() => {
-      fetchOrders();
-    }, 10000); // 10 segundos
-
-    return () => clearInterval(interval);
-  }, [user?.organizationId, fetchOrders]);
-
-  // Buscar pedidos quando usuário estiver disponível
-  useEffect(() => {
-    if (user?.organizationId) {
-      fetchOrders();
-    }
-  }, [user?.organizationId, fetchOrders]);
+  };
 
   const handleToggleExpand = (orderId: string) => {
     setExpandedOrderId((prev) => (prev === orderId ? null : orderId));
@@ -124,7 +101,7 @@ export default function KitchenPage() {
         }
       );
       toast.success("Pedido finalizado com sucesso");
-      fetchOrders(); // Atualizar lista após fechar pedido
+      fetchOrders();
     } catch (error: any) {
       const message =
         error?.response?.data?.error || "Erro ao fechar pedido.";
@@ -157,31 +134,50 @@ export default function KitchenPage() {
     const date = new Date(dateString);
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
+
     if (diffInMinutes < 1) return "Agora mesmo";
     if (diffInMinutes === 1) return "1 min atrás";
     if (diffInMinutes < 60) return `${diffInMinutes} min atrás`;
-    
+
     const diffInHours = Math.floor(diffInMinutes / 60);
     if (diffInHours === 1) return "1 hora atrás";
     if (diffInHours < 24) return `${diffInHours} horas atrás`;
-    
+
     const diffInDays = Math.floor(diffInHours / 24);
     return `${diffInDays} dias atrás`;
-  };
-
-  const formatLastUpdate = (date: Date) => {
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
-    });
   };
 
   // Simula o loading do usuário
   useEffect(() => {
     if (user) {
       setUserLoading(false);
+    }
+  }, [user]);
+
+  // Listener do Socket IO
+  const { socket } = useSocket();
+
+  useEffect(() => {
+    if (socket && user?.organizationId) {
+      const handleRefresh = (data: any) => {
+        if (data.organizationId === user.organizationId) {
+          console.log("Recebido evento de atualização no Bar");
+          fetchOrders();
+        }
+      };
+
+      socket.on('orders_refresh', handleRefresh);
+
+      return () => {
+        socket.off('orders_refresh', handleRefresh);
+      };
+    }
+  }, [socket, user]);
+
+  // Busca pedidos quando o usuário estiver disponível
+  useEffect(() => {
+    if (user?.organizationId) {
+      fetchOrders();
     }
   }, [user]);
 
@@ -199,36 +195,21 @@ export default function KitchenPage() {
   return (
     <>
       <Head>
-        <title>ServeFixe - Bar</title>
+        <title>ServeFixe - Cozinha</title>
       </Head>
 
       <div className="min-h-screen bg-background dark:bg-gray-900 p-4">
         <div className="container mx-auto px-4 py-8 max-w-7xl">
-          {/* Header com indicador de atualização */}
-          <div className="mb-8 flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Bar</h1>
-              <p className="text-muted-foreground mt-2">
-                Gerencie os pedidos do Bar em tempo real
-                <span className="text-xs ml-2 text-green-600">
-                  • Atualizado: {formatLastUpdate(lastUpdate)}
-                </span>
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchOrders}
-              disabled={loading}
-              className="flex items-center gap-2"
-            >
-              <FaSync className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Bar</h1>
+            <p className="text-muted-foreground mt-2">
+              Gerencie os pedidos do Bar em tempo real
+            </p>
           </div>
 
           {/* Orders Grid */}
-          {loading && orders.length === 0 ? (
+          {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
                 <Card key={i} className="animate-pulse">
@@ -250,27 +231,18 @@ export default function KitchenPage() {
                   <Utensils className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <h3 className="text-lg font-semibold mb-2">Nenhum pedido encontrado</h3>
                   <p>Não há pedidos de {CATEGORY_FILTER} no momento.</p>
-                  <Button 
-                    variant="outline" 
-                    onClick={fetchOrders}
-                    className="mt-4"
-                  >
-                    <FaSync className="mr-2 h-4 w-4" />
-                    Verificar Novos Pedidos
-                  </Button>
                 </div>
               </CardContent>
             </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredOrders.map((order) => (
-                <Card 
-                  key={order.id} 
-                  className={`transition-all duration-200 ${
-                    isAllPrepared(order) 
-                      ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20" 
-                      : "border-border"
-                  }`}
+                <Card
+                  key={order.id}
+                  className={`transition-all duration-200 ${isAllPrepared(order)
+                    ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20"
+                    : "border-border"
+                    }`}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start">
@@ -304,11 +276,10 @@ export default function KitchenPage() {
                       {order.items.slice(0, expandedOrderId === order.id ? undefined : 2).map((item) => (
                         <div
                           key={item.id}
-                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${
-                            item.prepared 
-                              ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800" 
-                              : "bg-muted/50"
-                          }`}
+                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${item.prepared
+                            ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+                            : "bg-muted/50"
+                            }`}
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
@@ -319,11 +290,10 @@ export default function KitchenPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => togglePrepared(item.id, !item.prepared)}
-                            className={`h-8 w-8 flex-shrink-0 ${
-                              item.prepared 
-                                ? "text-green-600 hover:text-green-700" 
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
+                            className={`h-8 w-8 flex-shrink-0 ${item.prepared
+                              ? "text-green-600 hover:text-green-700"
+                              : "text-muted-foreground hover:text-foreground"
+                              }`}
                           >
                             {item.prepared ? (
                               <FaCheckCircle className="h-4 w-4" />

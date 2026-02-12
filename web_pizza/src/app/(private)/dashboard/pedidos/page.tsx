@@ -1,19 +1,22 @@
 'use client'
 import React, { useEffect, useState, useContext } from "react";
-import { setupAPIClient } from "@/services/api"; 
-import { AuthContext } from "@/contexts/AuthContext"; 
+import { setupAPIClient } from "@/services/api";
+import { AuthContext } from "@/contexts/AuthContext";
 import { toast } from "react-toastify";
-import { FaEye, FaCheck, FaCheckCircle, FaRegCircle } from "react-icons/fa";
+import { FaEye, FaCheck, FaCheckCircle, FaRegCircle, FaCog } from "react-icons/fa";
 import Head from "next/head";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OrderManagerModal } from "@/components/dashboard/order/OrderManagerModal";
+import { useSocket } from "@/contexts/SocketContext";
 
 interface OrderItem {
   id: string;
   amount: number;
   prepared: boolean;
+  canceled?: boolean;
   Product: {
     id: string;
     name: string;
@@ -39,14 +42,49 @@ interface Order {
   items: OrderItem[];
 }
 
+// Icon component para substituir o Lucide
+const Utensils = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+    />
+  </svg>
+);
+
 export default function KitchenPage() {
   const { user } = useContext(AuthContext);
+  const { socket } = useSocket();
   const apiClient = setupAPIClient();
   const [orders, setOrders] = useState<Order[]>([]);
+  // ... (other states) ...
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [managingOrderId, setManagingOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userLoading, setUserLoading] = useState(true);
+
+  // Listener Socket
+  useEffect(() => {
+    if (socket && user?.organizationId) {
+      const handleRefresh = (data: any) => {
+        if (data.organizationId === user.organizationId) {
+          fetchOrders();
+        }
+      };
+      socket.on('orders_refresh', handleRefresh);
+      return () => {
+        socket.off('orders_refresh', handleRefresh);
+      };
+    }
+  }, [socket, user]);
 
   const CATEGORY_FILTER = "Derived";
 
@@ -58,11 +96,9 @@ export default function KitchenPage() {
         params: { organizationId: user.organizationId },
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      
-      const allOrders: Order[] = response.data;
 
-      console.log("pedidos",allOrders)
-      
+      const allOrders: Order[] = response.data;
+      console.log("all Orders", allOrders)
       setOrders(allOrders);
       setFilteredOrders(allOrders);
     } catch (error) {
@@ -96,19 +132,19 @@ export default function KitchenPage() {
   };
 
   const togglePrepared = async (itemId: string, prepared: boolean) => {
-  try {
-    await apiClient.put(
-      `/items/${itemId}/toggle-prepared?organizationId=${user?.organizationId}`,
-      { prepared },
-      {
-        headers: { Authorization: `Bearer ${user?.token}` },
-      }
-    );
-    fetchOrders();
-  } catch (err) {
-    toast.error("Erro ao atualizar item");
-  }
-};
+    try {
+      await apiClient.put(
+        `/items/${itemId}/toggle-prepared?organizationId=${user?.organizationId}`,
+        { prepared },
+        {
+          headers: { Authorization: `Bearer ${user?.token}` },
+        }
+      );
+      fetchOrders();
+    } catch (err) {
+      toast.error("Erro ao atualizar item");
+    }
+  };
 
   const isAllPrepared = (order: Order) => {
     const fullOrder = orders.find((o) => o.id === order.id);
@@ -120,17 +156,26 @@ export default function KitchenPage() {
     const date = new Date(dateString);
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-    
+
     if (diffInMinutes < 1) return "Agora mesmo";
     if (diffInMinutes === 1) return "1 min atrás";
     if (diffInMinutes < 60) return `${diffInMinutes} min atrás`;
-    
+
     const diffInHours = Math.floor(diffInMinutes / 60);
     if (diffInHours === 1) return "1 hora atrás";
     if (diffInHours < 24) return `${diffInHours} horas atrás`;
-    
+
     const diffInDays = Math.floor(diffInHours / 24);
     return `${diffInDays} dias atrás`;
+  };
+
+  const handleOpenManager = (orderId: string) => {
+    setManagingOrderId(orderId);
+  };
+
+  const handleCloseManager = () => {
+    setManagingOrderId(null);
+    fetchOrders();
   };
 
   // Simula o loading do usuário
@@ -140,23 +185,14 @@ export default function KitchenPage() {
     }
   }, [user]);
 
-  // Busca pedidos quando o usuário estiver disponível
+  // Busca inicial de pedidos
   useEffect(() => {
     if (user?.organizationId) {
       fetchOrders();
     }
   }, [user]);
 
-  if (userLoading || !user) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">A carregar dados do utilizador...</p>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <>
@@ -203,13 +239,12 @@ export default function KitchenPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredOrders.map((order) => (
-                <Card 
-                  key={order.id} 
-                  className={`transition-all duration-200 ${
-                    isAllPrepared(order) 
-                      ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20" 
-                      : "border-border"
-                  }`}
+                <Card
+                  key={order.id}
+                  className={`transition-all duration-200 ${isAllPrepared(order)
+                    ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20"
+                    : "border-border"
+                    }`}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start">
@@ -226,14 +261,25 @@ export default function KitchenPage() {
                           {order.name} • {getTimeAgo(order.created_at)}
                         </CardDescription>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleToggleExpand(order.id)}
-                        className="h-8 w-8"
-                      >
-                        <FaEye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleToggleExpand(order.id)}
+                          className="h-8 w-8"
+                        >
+                          <FaEye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenManager(order.id)}
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          title="Gerir Pedido"
+                        >
+                          <FaCog className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
 
@@ -243,33 +289,36 @@ export default function KitchenPage() {
                       {order.items.slice(0, expandedOrderId === order.id ? undefined : 2).map((item) => (
                         <div
                           key={item.id}
-                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${
-                            item.prepared 
-                              ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800" 
+                          className={`flex items-center justify-between p-2 rounded-lg transition-colors ${item.canceled
+                            ? "bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 opacity-70"
+                            : item.prepared
+                              ? "bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
                               : "bg-muted/50"
-                          }`}
+                            }`}
                         >
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
+                            <p className={`text-sm font-medium truncate ${item.canceled ? 'line-through text-muted-foreground' : ''}`}>
                               {item.amount}x {item.Product.name}
                             </p>
+                            {item.canceled && <span className="text-xs text-red-500 font-semibold">Cancelado</span>}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => togglePrepared(item.id, !item.prepared)}
-                            className={`h-8 w-8 flex-shrink-0 ${
-                              item.prepared 
-                                ? "text-green-600 hover:text-green-700" 
+                          {!item.canceled && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => togglePrepared(item.id, !item.prepared)}
+                              className={`h-8 w-8 flex-shrink-0 ${item.prepared
+                                ? "text-green-600 hover:text-green-700"
                                 : "text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            {item.prepared ? (
-                              <FaCheckCircle className="h-4 w-4" />
-                            ) : (
-                              <FaRegCircle className="h-4 w-4" />
-                            )}
-                          </Button>
+                                }`}
+                            >
+                              {item.prepared ? (
+                                <FaCheckCircle className="h-4 w-4" />
+                              ) : (
+                                <FaRegCircle className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
                         </div>
                       ))}
 
@@ -303,25 +352,19 @@ export default function KitchenPage() {
               ))}
             </div>
           )}
+
+          {/* Modal de Gestão */}
+          {managingOrderId && (
+            <OrderManagerModal
+              isOpen={!!managingOrderId}
+              onClose={handleCloseManager}
+              orderId={managingOrderId}
+              onOrderUpdated={fetchOrders}
+            />
+          )}
+
         </div>
       </div>
     </>
   );
 }
-
-// Icon component para substituir o Lucide
-const Utensils = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-    />
-  </svg>
-);

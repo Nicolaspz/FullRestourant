@@ -1,817 +1,509 @@
-// services/order/OrderManagementService.ts
-import { PrismaClient, StockReferenceType } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { PrismaClient, StockReferenceType } from '@prisma/client'
 
-interface DeleteItemParams {
-  itemId: string;
-  organizationId: string;
-  userId: string;
-  reason?: string;
-}
-
-interface UpdateItemQuantityParams {
-  itemId: string;
-  newQuantity: number;
-  organizationId: string;
-  userId: string;
-  reason?: string;
-}
-
-interface DeleteOrderParams {
-  orderId: string;
-  organizationId: string;
-  userId: string;
-  reason?: string;
-}
+const prisma = new PrismaClient()
 
 export class OrderManagementService {
-  // Método para deletar um item específico de um pedido
-  async deleteOrderItem({
-    itemId,
-    organizationId,
-    userId,
-    reason = "Item removido pelo usuário"
-  }: DeleteItemParams) {
-    return prisma.$transaction(async (tx) => {
-      console.log(`🗑️ Iniciando remoção do item ${itemId}...`);
 
-      // 1. Buscar o item com todas as informações necessárias
-      const item = await tx.item.findUnique({
-        where: { 
-          id: itemId,
-          organizationId 
-        },
-        include: {
-          Order: {
-            include: {
-              Session: true
-            }
-          },
-          Product: {
-            include: {
-              recipeItems: {
-                include: {
-                  ingredient: {
-                    include: {
-                      Stock: {
-                        where: { organizationId }
-                      },
-                      defaultArea: true,
-                      economatoes: {
-                        where: { organizationId },
-                        include: { area: true }
-                      }
-                    }
-                  }
-                }
-              },
-              Stock: {
-                where: { organizationId }
-              },
-              defaultArea: true,
-              economatoes: {
-                where: { organizationId },
-                include: { area: true }
-              }
-            }
-          },
-          areaOrigin: true
-        }
-      });
+  /* ======================================================
+      RESTAURAR STOCK (INVERSO DO applyStockDeduction)
+  ====================================================== */
+  private async applyStockRestoration(
+    tx: any, // Usando any para aceitar tx do prisma.$transaction
+    productId: string,
+    quantity: number,
+    organizationId: string,
+    referenceId: string
+  ) {
+    let remainingToRestore = quantity;
 
-      if (!item) {
-        throw new Error(`Item não encontrado ou não pertence à organização`);
-      }
+    console.log(`🔄 Iniciando restauração de ${quantity} unidades do produto ${productId} para pedido ${referenceId}`);
 
-      // 2. Verificar se o item já foi preparado
-      if (item.prepared) {
-        throw new Error("Não é possível remover um item que já foi preparado");
-      }
-
-      // 3. Verificar se o item está cancelado
-      if (item.canceled) {
-        throw new Error("Este item já está cancelado");
-      }
-
-      // 4. Marcar o item como cancelado (soft delete)
-      console.log(`🚫 Marcando item ${itemId} como cancelado...`);
-      const canceledItem = await tx.item.update({
-        where: { id: itemId },
-        data: {
-          canceled: true,
-          canceledAt: new Date(),
-          canceledReason: reason,
-          status: 'cancelado'
-        }
-      });
-
-      // 5. Devolver o estoque (se não for draft)
-      if (!item.Order.draft) {
-        console.log(`🔄 Devolvendo estoque do item: ${item.Product.name} x${item.amount}`);
-        await this.returnStockToInventory(tx, item, organizationId, item.Order.id);
-      }
-
-      // 6. Verificar se o pedido ainda tem itens ativos (não cancelados)
-      const remainingItems = await tx.item.count({
-        where: { 
-          orderId: item.Order.id,
-          canceled: false
-        }
-      });
-
-      // 7. Se não houver mais itens ativos, fechar o pedido?
-      if (remainingItems === 0) {
-        console.log(`📦 Pedido ${item.Order.id} está sem itens ativos`);
-        // Você pode decidir se quer fechar o pedido:
-        // await tx.order.update({
-        //   where: { id: item.order.id },
-        //   data: { status: true } // marcando como concluído
-        // });
-      }
-
-      // 8. Registrar no histórico de estoque
-      await tx.stockHistory.create({
-        data: {
-          type: 'entrada-Devolução por cancelamento', // Devolução é uma entrada de estoque
-          price: 0,
-          quantity: item.amount,
-          productId: item.productId,
-          organizationId,
-          referenceId: item.Order.id,
-          referenceType: StockReferenceType.sale, // Usando o enum correto
-          areaId: item.areaOriginId,
-         // observacoes: `Devolução por cancelamento: ${reason}`
-        }
-      });
-
-      console.log(`✅ Item cancelado e estoque devolvido com sucesso`);
-      return {
-        canceledItem,
-        orderId: item.Order.id,
-        remainingItems,
-        stockReturned: !item.Order.draft
-      };
-
-    }, {
-      maxWait: 5000,
-      timeout: 10000
+    // 1. Buscar movimentos de SAÍDA deste pedido para este produto, ordenados do mais recente
+    // Isso ajuda a desfazer exatamente as últimas ações
+    const movements = await tx.stockHistory.findMany({
+      where: {
+        productId,
+        organizationId,
+        referenceId,
+        referenceType: 'sale',
+        type: { in: ['saída', 'transferencia_area'] }
+      },
+      orderBy: { created_at: 'desc' }
     });
-  }
 
-  // Método para atualizar a quantidade de um item
-  async updateItemQuantity({
-    itemId,
-    newQuantity,
-    organizationId,
-    userId,
-    reason = "Quantidade ajustada pelo usuário"
-  }: UpdateItemQuantityParams) {
-    if (newQuantity <= 0) {
-      throw new Error("A quantidade deve ser maior que zero");
-    }
+    console.log(`   📄 Encontrados ${movements.length} movimentos de saída no histórico`);
 
-    return prisma.$transaction(async (tx) => {
-      console.log(`🔄 Atualizando quantidade do item ${itemId} para ${newQuantity}...`);
+    for (const movement of movements) {
+      if (remainingToRestore <= 0) break;
 
-      // 1. Buscar o item atual
-      const currentItem = await tx.item.findUnique({
-        where: { 
-          id: itemId,
-          organizationId 
-        },
-        include: {
-          Order: {
-            include: {
-              Session: true
-            }
-          },
-          Product: {
-            include: {
-              recipeItems: {
-                include: {
-                  ingredient: {
-                    include: {
-                      Stock: {
-                        where: { organizationId }
-                      },
-                      defaultArea: true,
-                      economatoes: {
-                        where: { organizationId },
-                        include: { area: true }
-                      }
-                    }
-                  }
-                }
-              },
-              Stock: {
-                where: { organizationId }
-              },
-              defaultArea: true,
-              economatoes: {
-                where: { organizationId },
-                include: { area: true }
-              }
-            }
-          },
-          areaOrigin: true
-        }
-      });
+      // Quanto podemos restaurar deste movimento específico?
+      // O movimento tem uma quantidade X. Não podemos restaurar mais que X deste movimento.
+      // Também não precisamos restaurar mais que o 'remainingToRestore'.
+      const restoreFromThisMovement = Math.min(remainingToRestore, movement.quantity);
 
-      if (!currentItem) {
-        throw new Error(`Item não encontrado ou não pertence à organização`);
+      console.log(`   🔙 Restaurando ${restoreFromThisMovement} (de ${movement.quantity}) do movimento ${movement.id}`);
+
+      // Onde restaurar? Depende de onde saiu (areaId, loteId ou stock geral)
+
+      // A. Restaurar para LOTE (se saiu de um lote específico)
+      if (movement.loteId) {
+        await tx.lote.update({
+          where: { id: movement.loteId },
+          data: {
+            quantity: { increment: restoreFromThisMovement },
+            isActive: true // Reativar lote se estava zerado
+          }
+        });
+        console.log(`     ✅ Devolvido ao lote ${movement.loteId}`);
       }
 
-      // 2. Verificar se pode ser editado
-      if (currentItem.prepared) {
-        throw new Error("Não é possível editar um item que já foi preparado");
-      }
+      // B. Restaurar para ÁREA (Economato) (se saiu de uma área específica)
+      else if (movement.areaId) {
+        // Verificar se já existe registro no economato para esta área/produto
+        const economato = await tx.economato.findFirst({
+          where: {
+            areaId: movement.areaId,
+            productId: productId,
+            organizationId
+          }
+        });
 
-      if (currentItem.canceled) {
-        throw new Error("Não é possível editar um item cancelado");
-      }
-
-      // 3. Calcular diferença
-      const difference = newQuantity - currentItem.amount;
-      console.log(`📊 Diferença de quantidade: ${difference}`);
-
-      if (difference === 0) {
-        throw new Error("A nova quantidade é igual à quantidade atual");
-      }
-
-      // 4. Se diferença negativa (redução), devolver estoque
-      if (difference < 0) {
-        const amountToReturn = Math.abs(difference);
-        console.log(`📤 Devolvendo ${amountToReturn} unidades ao estoque...`);
-        
-        // Criar um item temporário com a quantidade a devolver
-        const tempItem = {
-          ...currentItem,
-          amount: amountToReturn
-        };
-        
-        await this.returnStockToInventory(tx, tempItem, organizationId, currentItem.Order.id);
-      }
-
-      // 5. Se diferença positiva (aumento), verificar estoque disponível
-      if (difference > 0) {
-        console.log(`📥 Verificando estoque para ${difference} unidades adicionais...`);
-        await this.checkAndReserveAdditionalStock(tx, currentItem.Product, difference, organizationId, currentItem.Order.id);
-      }
-
-      // 6. Atualizar a quantidade do item
-      console.log(`✏️ Atualizando quantidade no banco de dados...`);
-      const updatedItem = await tx.item.update({
-        where: { id: itemId },
-        data: { 
-          amount: newQuantity,
-          updated_at: new Date()
-        }
-      });
-
-      // 7. Registrar no histórico de estoque
-      await tx.stockHistory.create({
-        data: {
-          type:  `Ajuste de quantidade: ${reason} (Antigo: ${currentItem.amount}, Novo: ${newQuantity})`,
-          price: 0,
-          quantity: Math.abs(difference),
-          productId: currentItem.productId,
-          organizationId,
-          referenceId: currentItem.Order.id,
-          referenceType: difference > 0 ? StockReferenceType.sale : StockReferenceType.ajuste,
-          areaId: currentItem.areaOriginId,
-          //observacoes:
-        }
-      });
-
-      console.log(`✅ Quantidade atualizada com sucesso`);
-      return {
-        updatedItem,
-        previousQuantity: currentItem.amount,
-        newQuantity,
-        difference,
-        orderId: currentItem.orderId
-      };
-
-    }, {
-      maxWait: 5000,
-      timeout: 10000
-    });
-  }
-
-  // Método para deletar/cancelar um pedido completo
-  async deleteCompleteOrder({
-    orderId,
-    organizationId,
-    userId,
-    reason = "Pedido cancelado pelo usuário"
-  }: DeleteOrderParams) {
-    return prisma.$transaction(async (tx) => {
-      console.log(`🗑️ Iniciando cancelamento do pedido ${orderId}...`);
-
-      // 1. Buscar o pedido com todos os itens ativos
-      const order = await tx.order.findUnique({
-        where: { 
-          id: orderId,
-          organizationId 
-        },
-        include: {
-          items: {
-            where: {
-              canceled: false
-            },
-            include: {
-              Product: {
-                include: {
-                  recipeItems: {
-                    include: {
-                      ingredient: {
-                        include: {
-                          Stock: {
-                            where: { organizationId }
-                          },
-                          defaultArea: true,
-                          economatoes: {
-                            where: { organizationId },
-                            include: { area: true }
-                          }
-                        }
-                      }
-                    }
-                  },
-                  Stock: {
-                    where: { organizationId }
-                  },
-                  defaultArea: true,
-                  economatoes: {
-                    where: { organizationId },
-                    include: { area: true }
-                  }
-                }
-              },
-              areaOrigin: true
-            }
-          },
-          Session: true
-        }
-      });
-
-      if (!order) {
-        throw new Error(`Pedido não encontrado ou não pertence à organização`);
-      }
-
-      // 2. Verificar se pode ser cancelado
-      const preparedItems = order.items.filter(item => item.prepared);
-      if (preparedItems.length > 0) {
-        throw new Error(
-          `Não é possível cancelar o pedido. ${preparedItems.length} item(s) já estão em preparação.`
-        );
-      }
-
-      // 3. Cancelar todos os itens ativos
-      //console.log(`🚫 Cancelando ${order.items.length} itens...`);
-      const canceledItems = await tx.item.updateMany({
-        where: { 
-          orderId: orderId,
-          canceled: false
-        },
-        data: {
-          canceled: true,
-          canceledAt: new Date(),
-          canceledReason: reason,
-          status: 'cancelado'
-        }
-      });
-
-      // 4. Devolver estoque de todos os itens (se não for draft)
-      if (!order.draft) {
-        //console.log(`🔄 Devolvendo estoque de ${order.items.length} itens...`);
-        for (const item of order.items) {
-          await this.returnStockToInventory(tx, item, organizationId, orderId);
-        }
-      }
-
-      // 5. Marcar pedido como concluído/cancelado
-      const updatedOrder = await tx.order.update({
-        where: { id: orderId },
-        data: {
-          status: true, // Marcando como concluído
-          updated_at: new Date()
-        }
-      });
-
-      // 6. Registrar no histórico para cada item
-      if (!order.draft) {
-        for (const item of order.items) {
-          await tx.stockHistory.create({
+        if (economato) {
+          await tx.economato.update({
+            where: { id: economato.id },
+            data: { quantity: { increment: restoreFromThisMovement } }
+          });
+        } else {
+          // Se não existir (estranho, mas possível se foi deletado), recriar
+          await tx.economato.create({
             data: {
-              type: 'entrada por Cancelamento de pedido',
-              price: 0,
-              quantity: item.amount,
-              productId: item.productId,
-              organizationId,
-              referenceId: orderId,
-              referenceType: StockReferenceType.sale,
-              areaId: item.areaOriginId,
-              //observacoes: `Cancelamento de pedido: ${reason}`
+              areaId: movement.areaId,
+              productId: productId,
+              quantity: restoreFromThisMovement,
+              organizationId
             }
           });
         }
+        console.log(`     ✅ Devolvido à área ${movement.areaId}`);
       }
 
-      console.log(`✅ Pedido cancelado com sucesso`);
-      return {
-        canceledOrder: updatedOrder,
-        itemsCanceled: canceledItems.count,
-        itemsReturned: order.draft ? 0 : order.items.length,
-        sessionId: order.sessionId,
-        orderStatus: 'cancelado'
-      };
+      // C. Restaurar para STOCK GERAL (se não tinha área nem lote, ou sempre junto com área dependendo da lógica)
+      // Nota: A lógica de stock pode ser: Stock Geral é a SOMA de tudo OU um depósito central.
+      // No seu sistema parece que Stock Geral trackea o TOTAL. Então SEMPRE incrementamos o Stock Geral?
+      // Analisando o OderSendService:
+      // se saiu de Stock Geral -> decrementou Stock Geral
+      // se saiu de Área -> decrementou Economato (E NÃO Stock Geral no código analisado, mas logicamente deveria? 
+      // O código analisado decrementava Stock Geral SE 'remaining > 0' no passo 2.
+      // Se saiu de Área, decrementou APENAS Economato? Não, o código do OderSendService não decrementava Stock Geral
+      // quando tirava da área? Vamos verificar...
+      // O seu código original decrementava Stock Geral no passo 2 APENAS se não tivesse área ou sobrasse.
+      // E TAMBÉM decrementava Stock Geral?
+      // Re-lendo OderSendService:
+      // "2. O restante desconta do stock geral" -> só desconta do geral o que não saiu da área.
+      //
+      // PORTANTO: Se o movimento tem areaId, ele saiu da área. Se não tem areaId (null), saiu do stock geral.
+      // DEVE-SE devolver para onde saiu.
 
-    }, {
-      maxWait: 5000,
-      timeout: 10000
-    });
-  }
-
-  // Método auxiliar para devolver estoque ao inventário
-  private async returnStockToInventory(
-    tx: any,
-    item: any,
-    organizationId: string,
-    referenceOrderId: string
-  ) {
-    const product = item.product;
-    const amount = item.amount;
-    const areaOriginId = item.areaOriginId;
-
-    console.log(`📦 Devolvendo ${amount} unidades de ${product.name}`);
-
-    if (product.isDerived && product.recipeItems.length > 0) {
-      // Produto derivado - devolver ingredientes
-      for (const recipeItem of product.recipeItems) {
-        if (recipeItem.impactaPreco) {
-          const quantityToReturn = recipeItem.quantity * amount;
-          await this.addStockToInventory(
-            tx,
-            recipeItem.ingredient,
-            quantityToReturn,
-            organizationId,
-            referenceOrderId,
-            areaOriginId,
-            `${product.name} -> ${recipeItem.ingredient.name}`
-          );
-        }
-      }
-    } else {
-      // Produto direto - devolver o próprio produto
-      await this.addStockToInventory(
-        tx,
-        product,
-        amount,
-        organizationId,
-        referenceOrderId,
-        areaOriginId,
-        product.name
-      );
-    }
-  }
-
-  // Método auxiliar para adicionar estoque ao inventário
-  private async addStockToInventory(
-    tx: any,
-    product: any,
-    quantity: number,
-    organizationId: string,
-    referenceOrderId: string,
-    areaOriginId: string | null,
-    productName: string
-  ) {
-    console.log(`➕ Adicionando ${quantity} unidades de ${productName} ao estoque`);
-
-    // 1. Primeiro tentar devolver para a área de origem (se existir)
-    if (areaOriginId) {
-      const economato = product.economatoes?.find(
-        (e: any) => e.areaId === areaOriginId
-      );
-
-      if (economato) {
-        console.log(`   🏠 Devolvendo ${quantity} unidades para área ${economato.area?.nome}`);
-        
-        // Atualizar economato
-        await tx.economato.update({
-          where: { id: economato.id },
-          data: {
-            quantity: { increment: quantity }
-          }
+      if (!movement.areaId) {
+        // Saiu do Stock Geral
+        await tx.stock.updateMany({
+          where: { productId, organizationId },
+          data: { totalQuantity: { increment: restoreFromThisMovement } }
         });
-
-        // Registrar no histórico
-        await tx.stockHistory.create({
-          data: {
-            type: 'entrada',
-            price: 0,
-            quantity: quantity,
-            productId: product.id,
-            organizationId,
-            referenceId: referenceOrderId,
-            referenceType: StockReferenceType.transferencia_area,
-            areaId: areaOriginId,
-            observacoes: `Devolução de estoque para área ${economato.area?.nome}`
-          }
-        });
-
-        return; // Estoque devolvido à área
+        console.log(`     ✅ Devolvido ao stock geral`);
+      } else {
+        // Se saiu da área, é possível que precisemos atualizar o TOTAL também?
+        // Depende da sua regra de negócio. Se Stock Total = Soma das Áreas + Depósito, então sim.
+        // Se Stock Total = Só Depósito Central, então não.
+        // Pelo schema: Stock.totalQuantity parece ser global.
+        // Vou assumir que devemos devolver ao Stock Geral TAMBÉM se o sistema considera Stock Geral como "Soma de Tudo"
+        // MAS, para ser seguro e reverter EXATAMENTE o que foi feito:
+        // Se o movimento de saída não tocou no stock geral (type transferencia_area ou areaId presente),
+        // então a reversão não deve tocar no stock geral se ele for independente.
+        //
+        // Porém, normalmente Stock Total reflete tudo. 
+        // Vamos olhar o OderSendServices novamente... não, ele não decrementava Stock Total quando tirava da área.
+        // Ele fazia update no Economato.
+        // Então está correto: Só devolve ao Stock Geral se areaId for null.
       }
-    }
 
-    // 2. Se não tem área específica ou não encontrou, adicionar ao stock geral
-    console.log(`   📦 Devolvendo ${quantity} unidades para stock geral`);
-    
-    const stock = product.Stock?.[0];
-    
-    if (stock) {
-      // Atualizar stock geral
-      await tx.stock.update({
-        where: { id: stock.id },
-        data: {
-          totalQuantity: { increment: quantity }
-        }
-      });
-
-      // Registrar no histórico
+      // 2. Registrar histórico de ENTRADA (Estorno)
       await tx.stockHistory.create({
         data: {
-          type: 'entrada',
-          price: 0,
-          quantity: quantity,
-          productId: product.id,
+          type: 'entrada', // Estorno
+          price: movement.price,
+          quantity: restoreFromThisMovement,
+          productId,
           organizationId,
-          referenceId: referenceOrderId,
-          referenceType: StockReferenceType.sale,
-          areaId: null,
-          observacoes: `Devolução de estoque para stock geral`
-        }
-      });
-    } else {
-      // Criar novo registro de stock se não existir
-      console.log(`   ⚠️ Criando novo registro de stock para ${productName}`);
-      
-      const newStock = await tx.stock.create({
-        data: {
-          productId: product.id,
-          totalQuantity: quantity,
-          organizationId
+          referenceId, // Mantém o ID do pedido para rastreabilidade
+          referenceType: 'sale', // Marcamos como venda para saber que é referente a isso, ou poderíamos criar um tipo 'estorno'
+          loteId: movement.loteId,
+          areaId: movement.areaId
         }
       });
 
-      // Registrar no histórico
-      await tx.stockHistory.create({
-        data: {
-          type: 'entrada',
-          price: 0,
-          quantity: quantity,
-          productId: product.id,
-          organizationId,
-          referenceId: referenceOrderId,
-          referenceType: StockReferenceType.manual,
-          areaId: null,
-          observacoes: `Criação de stock por devolução`
-        }
+      remainingToRestore -= restoreFromThisMovement;
+    }
+
+    // Se ainda sobrou quantidade para restaurar mas acabaram os movimentos (inconsistência?),
+    // devolvemos para o Stock Geral por segurança?? Ou ignoramos?
+    // Melhor logar o aviso e devolver para Stock Geral para não perder mercadoria.
+    if (remainingToRestore > 0) {
+      console.warn(`⚠️ SOBRA DE ESTORNO: ${remainingToRestore} unidades não encontradas no histórico de saída.`);
+
+      await tx.stock.updateMany({
+        where: { productId, organizationId },
+        data: { totalQuantity: { increment: remainingToRestore } }
       });
+      console.log(`     ⚠️ Devolvido sobra ao stock geral`);
     }
   }
 
-  // Método auxiliar para verificar e reservar estoque adicional
-  private async checkAndReserveAdditionalStock(
-    tx: any,
-    product: any,
-    additionalQuantity: number,
-    organizationId: string,
-    orderId: string
-  ) {
-    console.log(`🔍 Verificando estoque para ${additionalQuantity} unidades adicionais de ${product.name}`);
-
-    if (product.isDerived && product.recipeItems.length > 0) {
-      // Produto derivado - verificar ingredientes
-      for (const recipeItem of product.recipeItems) {
-        if (recipeItem.impactaPreco) {
-          const requiredAmount = recipeItem.quantity * additionalQuantity;
-          const ingredient = recipeItem.ingredient;
-          
-          // Verificar disponibilidade
-          await this.verifyStockAvailability(tx, ingredient, requiredAmount, organizationId, product.name);
-        }
-      }
-    } else {
-      // Produto direto - verificar disponibilidade
-      await this.verifyStockAvailability(tx, product, additionalQuantity, organizationId, product.name);
-    }
-
-    console.log(`✅ Estoque disponível para aumento de quantidade`);
-  }
-
-  // Método auxiliar para verificar disponibilidade de estoque
-  private async verifyStockAvailability(
-    tx: any,
-    product: any,
-    requiredQuantity: number,
-    organizationId: string,
-    productName: string
-  ) {
-    // Buscar estoque atualizado
-    const updatedProduct = await tx.product.findUnique({
-      where: { id: product.id },
-      include: {
-        Stock: {
-          where: { organizationId }
-        },
-        economatoes: {
-          where: { organizationId },
-          include: { area: true }
-        },
-        defaultArea: true
-      }
-    });
-
-    if (!updatedProduct) {
-      throw new Error(`Produto ${productName} não encontrado`);
-    }
-
-    const generalStock = updatedProduct.Stock?.[0];
-    const generalStockQuantity = generalStock?.totalQuantity || 0;
-
-    if (updatedProduct.defaultArea) {
-      // Verificar área default primeiro
-      const economato = updatedProduct.economatoes?.find(
-        (e: any) => e.areaId === updatedProduct.defaultArea?.id
-      );
-      
-      const areaStockQuantity = economato?.quantity || 0;
-      const totalAvailable = areaStockQuantity + generalStockQuantity;
-      
-      if (totalAvailable < requiredQuantity) {
-        throw new Error(
-          `Estoque insuficiente para ${productName}. ` +
-          `Necessário: ${requiredQuantity}, ` +
-          `Disponível: ${totalAvailable} ` +
-          `(Área ${updatedProduct.defaultArea.nome}: ${areaStockQuantity}, ` +
-          `Stock Geral: ${generalStockQuantity})`
-        );
-      }
-    } else if (generalStockQuantity < requiredQuantity) {
-      throw new Error(
-        `Estoque insuficiente no stock geral para ${productName}. ` +
-        `Necessário: ${requiredQuantity}, Disponível: ${generalStockQuantity}`
-      );
-    }
-  }
-
-  // Método para restaurar um item cancelado
-  async restoreCanceledItem({
-    itemId,
-    organizationId,
-    userId,
-    reason = "Item restaurado pelo usuário"
-  }: DeleteItemParams) {
+  /* ======================================================
+      CANCELAR ITEM (SOFT DELETE)
+      Regra: Só pode cancelar se NÃO estiver preparado.
+      Ação: Marca como cancelado e estorna stock.
+  ====================================================== */
+  async deleteOrderItem(itemId: string) {
     return prisma.$transaction(async (tx) => {
-      console.log(`🔄 Restaurando item cancelado ${itemId}...`);
+      console.log(`🚫 Tentando cancelar item ${itemId}...`);
 
-      // 1. Buscar o item cancelado
       const item = await tx.item.findUnique({
-        where: { 
-          id: itemId,
-          organizationId 
-        },
+        where: { id: itemId },
         include: {
-          Order: true,
           Product: {
             include: {
               recipeItems: {
-                include: {
-                  ingredient: {
-                    include: {
-                      Stock: {
-                        where: { organizationId }
-                      },
-                      defaultArea: true,
-                      economatoes: {
-                        where: { organizationId },
-                        include: { area: true }
-                      }
-                    }
-                  }
-                }
-              },
-              Stock: {
-                where: { organizationId }
-              },
-              defaultArea: true,
-              economatoes: {
-                where: { organizationId },
-                include: { area: true }
+                include: { ingredient: true }
               }
             }
           }
         }
       });
 
-      if (!item) {
-        throw new Error(`Item não encontrado`);
+      if (!item) throw new Error("Item não encontrado");
+      if (item.canceled) throw new Error("Item já está cancelado");
+
+      // 1. Verificar se está preparado
+      if (item.prepared || item.status === 'pronto' || item.status === 'em_preparacao') {
+        throw new Error("Item já preparado ou em preparação. Não pode ser cancelado via gestão simples.");
       }
 
-      /*if (!item.canceled) {
-        throw new Error(`Este item não está cancelado`);
-      }*/
+      const quantity = item.amount;
 
-      // 2. Verificar estoque disponível para restaurar
-      await this.verifyStockAvailability(tx, item.Product, item.amount, organizationId, item.Product.name);
-
-      // 3. Remover estoque novamente (se não for draft)
-      if (!item.Order.draft) {
-        console.log(`📥 Retirando ${item.amount} unidades do estoque...`);
-        await this.removeStockFromInventory(tx, item.Product, item.amount, organizationId, item.Order.id, item.areaOriginId);
+      // 2. Restaurar Stock
+      if (item.Product.isDerived && item.Product.recipeItems.length > 0) {
+        console.log(`   🍽️ É um prato derivado. Restaurando ingredientes...`);
+        for (const recipe of item.Product.recipeItems) {
+          if (recipe.impactaPreco) {
+            const ingredientQty = recipe.quantity * quantity;
+            await this.applyStockRestoration(
+              tx,
+              recipe.ingredientId,
+              ingredientQty,
+              item.organizationId,
+              item.orderId
+            );
+          }
+        }
+      } else {
+        console.log(`   📦 É um produto direto. Restaurando...`);
+        await this.applyStockRestoration(
+          tx,
+          item.productId,
+          quantity,
+          item.organizationId,
+          item.orderId
+        );
       }
 
-      // 4. Restaurar o item
-      const restoredItem = await tx.item.update({
+      // 3. Marcar como cancelado (Soft Delete)
+      await tx.item.update({
         where: { id: itemId },
         data: {
-          canceled: false,
-          canceledAt: null,
-          canceledReason: null,
-          status: 'pendente',
-          updated_at: new Date()
+          canceled: true,
+          status: "cancelado",
+          canceledAt: new Date()
         }
       });
 
-      // 5. Registrar no histórico
-      await tx.stockHistory.create({
-        data: {
-          type: 'saída- Restauração de item: ${reason}',
-          price: 0,
-          quantity: item.amount,
-          productId: item.productId,
-          organizationId,
-          referenceId: item.Order.id,
-          referenceType: StockReferenceType.sale,
-          areaId: item.areaOriginId,
-          //observacoes: `Restauração de item: ${reason}`
-        }
-      });
-
-      console.log(`✅ Item restaurado com sucesso`);
-      return {
-        restoredItem,
-        orderId: item.Order.id
-      };
-
-    }, {
-      maxWait: 5000,
-      timeout: 10000
+      console.log(`✅ Item cancelado com sucesso.`);
+      return { success: true, organizationId: item.organizationId };
     });
   }
 
-  // Método auxiliar para remover estoque (para restauração)
-  private async removeStockFromInventory(
-    tx: any,
-    product: any,
-    quantity: number,
-    organizationId: string,
-    orderId: string,
-    areaOriginId: string | null
-  ) {
-    console.log(`📤 Retirando ${quantity} unidades de ${product.name} do estoque`);
+  /* ======================================================
+      ATUALIZAR QUANTIDADE (UPDATE)
+  ====================================================== */
+  async updateItemQuantity(itemId: string, newQuantity: number) {
+    return prisma.$transaction(async (tx) => {
+      console.log(`✏️ Atualizando quantidade do item ${itemId} para ${newQuantity}...`);
 
-    // Primeiro tentar da área default
-    if (product.defaultArea) {
-      const economato = product.economatoes?.find(
-        (e: any) => e.areaId === product.defaultArea?.id
-      );
-
-      if (economato && economato.quantity >= quantity) {
-        // Tem suficiente na área default
-        await tx.economato.update({
-          where: { id: economato.id },
-          data: {
-            quantity: { decrement: quantity }
+      const item = await tx.item.findUnique({
+        where: { id: itemId },
+        include: {
+          Product: {
+            include: {
+              recipeItems: {
+                include: { ingredient: true }
+              }
+            }
           }
-        });
-        return;
-      }
-    }
-
-    // Se não tem na área default ou não é suficiente, usar stock geral
-    const stock = product.Stock?.[0];
-    if (stock && stock.totalQuantity >= quantity) {
-      await tx.stock.update({
-        where: { id: stock.id },
-        data: {
-          totalQuantity: { decrement: quantity }
         }
       });
-    } else {
-      throw new Error(`Estoque insuficiente para restaurar item`);
-    }
+
+      if (!item) throw new Error("Item não encontrado");
+      if (item.canceled) throw new Error("Item cancelado não pode ser alterado");
+
+      // Verificar se item já foi preparado antes de alterar quantidade?
+      // Se aumentar quantidade, precisaria de stock check. Bloqueamos aumento.
+      // Se diminuir quantidade, estornamos. Se já foi preparado, estornamos o que "sobrou"?
+      // O usuário disse "mesmo sendo ja preparado... ja se gastou o stok".
+      // Se diminuirmos a quantidade de um item preparado, teoricamente estamos dizendo que "não gastou tudo isso".
+      // Mas se já foi feito, gastou.
+      // Por segurança, vou BLOQUEAR alteração de quantidade se estiver preparado, igual ao cancelamento.
+      if (item.prepared || item.status === 'pronto' || item.status === 'em_preparacao') {
+        throw new Error("Item já preparado. Quantidade não pode ser alterada.");
+      }
+
+      const currentQuantity = item.amount;
+      const diff = newQuantity - currentQuantity;
+
+      if (diff === 0) return { success: true, message: "Quantidade inalterada", organizationId: item.organizationId };
+
+      if (diff > 0) {
+        throw new Error("Para aumentar a quantidade, adicione o item novamente ao pedido.");
+      }
+
+      else if (diff < 0) {
+        const restoreQty = Math.abs(diff);
+        console.log(`   📉 Diminuindo quantidade em ${restoreQty}. Restaurando stock...`);
+
+        if (item.Product.isDerived && item.Product.recipeItems.length > 0) {
+          for (const recipe of item.Product.recipeItems) {
+            if (recipe.impactaPreco) {
+              const ingredientQty = recipe.quantity * restoreQty;
+              await this.applyStockRestoration(
+                tx,
+                recipe.ingredientId,
+                ingredientQty,
+                item.organizationId,
+                item.orderId
+              );
+            }
+          }
+        } else {
+          await this.applyStockRestoration(
+            tx,
+            item.productId,
+            restoreQty,
+            item.organizationId,
+            item.orderId
+          );
+        }
+      }
+
+      // Atualizar item
+      await tx.item.update({
+        where: { id: itemId },
+        data: { amount: newQuantity }
+      });
+
+      console.log(`✅ Quantidade atualizada.`);
+      return { success: true, organizationId: item.organizationId };
+    });
+  }
+
+  /* ======================================================
+      CANCELAR PEDIDO COMPLETO (SOFT DELETE)
+      Regra: Só pode cancelar se NENHUM item estiver preparado.
+      Ação: Cancela todos os itens e estorna.
+  ====================================================== */
+  async deleteCompleteOrder(orderId: string) {
+    return prisma.$transaction(async (tx) => {
+      console.log(`💥 Tentando cancelar pedido completo ${orderId}...`);
+
+      const items = await tx.item.findMany({
+        where: { orderId },
+        include: {
+          Product: {
+            include: {
+              recipeItems: {
+                include: { ingredient: true }
+              }
+            }
+          }
+        }
+      });
+
+      // Se não tiver itens, pegar OrganizationId de algum lugar?
+      // Buscar pedido
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      const organizationId = order?.organizationId || items[0]?.organizationId;
+
+      const preparedItems = items.filter(item => item.prepared === true || item.status === 'pronto' || item.status === 'em_preparacao');
+
+      if (preparedItems.length > 0) {
+        throw new Error(`Não é possível cancelar o pedido pois contém ${preparedItems.length} itens já preparados ou em preparação. Use a opção de 'Limpar não preparados' ou cancele os itens individualmente.`);
+      }
+
+      console.log(`   ✅ Nenhum item preparado. Prosseguindo com cancelamento completo.`);
+
+      for (const item of items) {
+        if (item.canceled) continue;
+
+        const quantity = item.amount;
+
+        if (item.Product.isDerived && item.Product.recipeItems.length > 0) {
+          for (const recipe of item.Product.recipeItems) {
+            if (recipe.impactaPreco) {
+              await this.applyStockRestoration(
+                tx,
+                recipe.ingredientId,
+                recipe.quantity * quantity,
+                item.organizationId,
+                item.orderId
+              );
+            }
+          }
+        } else {
+          await this.applyStockRestoration(
+            tx,
+            item.productId,
+            quantity,
+            item.organizationId,
+            item.orderId
+          );
+        }
+      }
+
+      // Soft Delete: Cancelar todos os itens
+      await tx.item.updateMany({
+        where: { orderId },
+        data: {
+          canceled: true,
+          status: "cancelado",
+          canceledAt: new Date()
+        }
+      });
+
+      await tx.orderSession.deleteMany({ where: { orderId } });
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: false,
+          draft: true,
+          name: `CANCELADO - ${new Date().toISOString()}`
+        }
+      });
+
+      console.log(`✅ Pedido ${orderId} cancelado com sucesso.`);
+      return { success: true, message: "Pedido cancelado com sucesso.", organizationId };
+    });
+  }
+
+  /* ======================================================
+      LIMPAR ITENS NÃO PREPARADOS (SOFT DELETE)
+  ====================================================== */
+  async cleanUnpreparedItems(orderId: string) {
+    return prisma.$transaction(async (tx) => {
+      console.log(`🧹 Cancelando itens não preparados do pedido ${orderId}...`);
+
+      const items = await tx.item.findMany({
+        where: { orderId },
+        include: {
+          Product: {
+            include: {
+              recipeItems: {
+                include: { ingredient: true }
+              }
+            }
+          }
+        }
+      });
+
+      // Se tiver itens, pegar do primeiro. Se não, buscar order. 
+      let organizationId = items[0]?.organizationId;
+      if (!organizationId) {
+        const order = await tx.order.findUnique({ where: { id: orderId } });
+        organizationId = order?.organizationId;
+      }
+
+      const itemsToCancel = items.filter(item => !item.prepared && item.status !== 'pronto' && item.status !== 'em_preparacao' && !item.canceled);
+
+      if (itemsToCancel.length === 0) {
+        return { success: true, message: "Nenhum item não-preparado para cancelar.", count: 0, organizationId };
+      }
+
+      console.log(`   Items a cancelar: ${itemsToCancel.length}`);
+
+      for (const item of itemsToCancel) {
+        const quantity = item.amount;
+
+        if (item.Product.isDerived && item.Product.recipeItems.length > 0) {
+          for (const recipe of item.Product.recipeItems) {
+            if (recipe.impactaPreco) {
+              await this.applyStockRestoration(
+                tx,
+                recipe.ingredientId,
+                recipe.quantity * quantity,
+                item.organizationId,
+                item.orderId
+              );
+            }
+          }
+        } else {
+          await this.applyStockRestoration(
+            tx,
+            item.productId,
+            quantity,
+            item.organizationId,
+            item.orderId
+          );
+        }
+      }
+
+      // Soft Delete: Marcar como cancelado
+      await tx.item.updateMany({
+        where: {
+          orderId,
+          id: { in: itemsToCancel.map(i => i.id) }
+        },
+        data: {
+          canceled: true,
+          status: "cancelado",
+          canceledAt: new Date()
+        }
+      });
+
+      console.log(`✅ ${itemsToCancel.length} itens cancelados e estornados.`);
+
+      return {
+        success: true,
+        message: `${itemsToCancel.length} itens não preparados foram cancelados.`,
+        count: itemsToCancel.length,
+        organizationId
+      };
+    });
+  }
+
+  // Método auxiliar para consultar histórico
+  async getOrderStockHistory(orderId: string) {
+    const history = await prisma.stockHistory.findMany({
+      where: { referenceId: orderId },
+      include: {
+        product: true,
+        area: true,
+        Lote: true
+      },
+      orderBy: { created_at: 'desc' }
+    });
+    return history;
+  }
+
+  // Método para restaurar item cancelado (Opcional)
+  async restoreCanceledItem(itemId: string) {
+    throw new Error("Funcionalidade de restaurar item cancelado não implementada.");
   }
 }
